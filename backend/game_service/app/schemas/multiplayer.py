@@ -6,3 +6,6 @@ class Player(BaseModel):
     name: str
     score: int = 0
     current_answer: Optional[str] = None
+
+class RoomCreateResponse(BaseModel):
+    room_id: str
