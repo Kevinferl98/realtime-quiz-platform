@@ -1,6 +1,6 @@
 import grpc.aio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from app.exception import QuizNotFoundError
 from app.services.grpc_generated import quiz_service_pb2
 from app.services.quiz_grpc_client import QuizServiceClient
