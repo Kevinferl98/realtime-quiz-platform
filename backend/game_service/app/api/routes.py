@@ -1,21 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.services import room_service
 from app.auth import get_current_user
-from app.services.quiz_grpc_client import get_quiz_by_id
 from app.dependencies import get_redis_client
+from app.schemas.multiplayer import RoomCreateResponse
 import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/game", tags=["game"])
 
-@router.post("/{quiz_id}/create_room")
-async def create_room(quiz_id: str, user=Depends(get_current_user), redis=Depends(get_redis_client)):
+@router.post(
+    "/{quiz_id}/create_room",
+    status_code=status.HTTP_201_CREATED,
+    response_model=RoomCreateResponse,
+    summary="Create a new room based on a quiz",
+)
+async def create_room(quiz_id: str, request: Request, user=Depends(get_current_user), redis=Depends(get_redis_client)):
     if user is None:
         raise HTTPException(status_code=401, detail="User not logged in")
-    
-    quiz_data = await get_quiz_by_id(quiz_id)
-    if not quiz_data:
-        logger.warning(f"Quiz {quiz_id} not found")
-        raise HTTPException(status_code=404, detail="Quiz not found")
 
-    return await room_service.create_room(redis, quiz_id, user["sub"], quiz_data)
+    quiz_client = request.app.state.quiz_client
+
+    return await room_service.create_room(redis, quiz_id, user["sub"], quiz_client)

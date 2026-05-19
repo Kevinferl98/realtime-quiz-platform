@@ -4,6 +4,7 @@ from app.api.routes_ws import router_ws
 from app.logging_config import setup_logging
 from app.middleware.logging_middleware import setup_http_logging
 from app.dependencies import get_room_manager
+from app.services.quiz_grpc_client import QuizServiceClient
 from app.telemetry import setup_telemetry, shutdown_telemetry
 from contextlib import asynccontextmanager
 
@@ -11,13 +12,20 @@ setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Room Manager initialization
     manager = get_room_manager()
     await manager.start()
-
     app.state.room_manager = manager
+
+    # gRPC Client initialization
+    quiz_client = QuizServiceClient()
+    await quiz_client.start()
+    app.state.quiz_client = quiz_client
 
     yield
 
+    # Clean after shutdown
+    await quiz_client.close()
     await manager.stop()
     shutdown_telemetry()
 
