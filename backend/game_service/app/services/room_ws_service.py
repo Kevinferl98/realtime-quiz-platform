@@ -8,11 +8,15 @@ from app.domain.room_session import RoomSession
 logger = logging.getLogger(__name__)
 
 class RoomWebSocketService:
+    """Manages the lifecycle of individual WebSocket connections, parsing inbound user actions."""
     def __init__(self, manager, redis):
         self.manager = manager
         self.redis = redis
 
     async def handle_connection(self, websocket: WebSocket, room_id: str):
+        """Accepts a connection, establishes the user session, and boots the main event loop."""
+        await websocket.accept()
+
         await self.manager.connect(room_id, websocket)
 
         session = await self._initialize_session(websocket, room_id)
@@ -22,6 +26,7 @@ class RoomWebSocketService:
         await self._event_loop(websocket, room_id, session)
 
     async def _initialize_session(self, websocket: WebSocket, room_id: str):
+        """Authenticates the incoming socket connection and evaluates room state requirements."""
         token = websocket.query_params.get("token")
         user_payload = self._authenticate(token)
 
@@ -37,6 +42,7 @@ class RoomWebSocketService:
             await websocket.close()
             raise Exception("Room not found")
 
+        # Prevent late-joins to keep quiz state and scoring synchronization coherent.
         if room_meta.get("started"):
             await websocket.send_json({
                 "type": "error",
@@ -61,6 +67,7 @@ class RoomWebSocketService:
             "player_id": session.player_id
         })
 
+        # Anonymous players are deferred from the Redis roster until they explicitly pick a name.
         if session.is_host or session.is_authenticated:
             await self.redis.add_player(
                 room_id,
@@ -72,6 +79,7 @@ class RoomWebSocketService:
         return session
 
     async def _event_loop(self, websocket: WebSocket, room_id: str, session: RoomSession):
+        """Continuously streams incoming JSON frames and routes them to explicit action handlers."""
         try:
             async for data in websocket.iter_json():
                 action = data.get("type")
@@ -95,9 +103,11 @@ class RoomWebSocketService:
             await self.handle_disconnect(websocket, room_id)
     
     async def handle_disconnect(self, websocket: WebSocket, room_id: str):
+        """Cleans up the localized active session inside RoomManager when the socket drops."""
         await self.manager.disconnect(room_id, websocket)
 
     async def _handle_join(self, websocket: WebSocket, room_id: str, session: RoomSession, data: dict):
+        """Finalizes the profile registration for non-authenticated guest players."""
         if session.is_authenticated:
             return
         
@@ -119,6 +129,7 @@ class RoomWebSocketService:
         await self._broadcast_players(room_id, "player_joined")
 
     async def _handle_start(self, websocket: WebSocket, room_id: str, session: RoomSession):
+        """Triggers the quiz state transition if the requesting session is the designated host."""
         if not session.is_host:
             await websocket.send_json({
                 "type": "error",
@@ -129,6 +140,7 @@ class RoomWebSocketService:
         await self.manager.start_quiz(room_id)
 
     async def _handle_answer(self, room_id: str, session: RoomSession, data: dict):
+        """Saves a player submission and notifies the cluster for real-time early-cutoff logic."""
         answer = data.get("answer")
 
         room_meta = await self.redis.get_room_meta(room_id)
@@ -143,8 +155,16 @@ class RoomWebSocketService:
             session.player_id,
             answer
         )
+
+        # Broadcast via Pub/Sub to allow any horizontal application instance to process the cutoff check.
+        await self.redis.publish_room_message(room_id, {
+            "type": "answer_submitted",
+            "current_question_index": question_index,
+            "player_id": session.player_id,
+        })
     
     def _authenticate(self, token):
+        """Verifies JWT claims against core authentication systems, safely swallowing errors."""
         if not token:
             return None
 
@@ -154,6 +174,7 @@ class RoomWebSocketService:
             return None
     
     def _resolve_identity(self, user_payload):
+        """Extracts claims from authenticated players or generates a random UUID for guests."""
         if user_payload:
             return (
                 user_payload.get("sub"),
@@ -162,9 +183,11 @@ class RoomWebSocketService:
         return str(uuid.uuid4()), None
     
     def _resolve_role(self, player_id: str, room_meta: dict):
+        """Evaluates whether the caller maps directly to the unique creator of the room registry."""
         return "host" if player_id == room_meta["owner_id"] else "player"
     
     async def _broadcast_players(self, room_id: str, event_type: str):
+        """Queries the complete room roster and distributes it to the cluster broadcast channel."""
         players = await self.redis.get_players(room_id)
 
         await self.redis.publish_room_message(room_id, {

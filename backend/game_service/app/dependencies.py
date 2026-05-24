@@ -1,8 +1,10 @@
 from app.services.redis_client import RedisClient
-from app.room_manager import RoomManager
+from app.services.room_manager import RoomManager
+from app.services.connection_manager import ConnectionManager
 
 _redis_instance = RedisClient()
-_manager_instance = RoomManager(_redis_instance)
+_connection_manager_instance = ConnectionManager()
+_manager_instance = RoomManager(redis_client=_redis_instance, connection_manager=_connection_manager_instance)
 
 def get_redis_client() -> RedisClient:
     return _redis_instance
