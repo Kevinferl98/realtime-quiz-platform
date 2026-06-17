@@ -3,6 +3,7 @@ services:
   postgres:
     image: postgres:18.2-alpine3.22
     container_name: keycloak_db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: keycloak 
       POSTGRES_USER: ${POSTGRES_USER} 
@@ -21,6 +22,8 @@ services:
   redis:
     image: redis:8.4.0-alpine
     container_name: redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -32,10 +35,16 @@ services:
       - backend_net
 
   mongo:
-    image: mongo
+    image: mongo:8.3.4
     container_name: mongo
+    restart: unless-stopped
     ports:
       - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     volumes:
       - mongo_data:/data/db
     networks:
@@ -44,45 +53,47 @@ services:
   tempo:
     image: grafana/tempo:2.7.2
     container_name: tempo
+    restart: unless-stopped
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./observability/tempo/tempo.yaml:/etc/tempo.yaml:ro
-    ports:
-      - "4317:4317"
-      - "3200:3200"
     networks:
       - backend_net
 
   grafana:
     image: grafana/grafana:11.2.0
     container_name: grafana
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
     volumes:
       - ./observability/grafana/provisioning/datasources/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
     depends_on:
-      - tempo
-      - loki
+      tempo:
+        condition: service_started
+      loki:
+        condition: service_started
     networks:
       - backend_net
 
   loki:
     image: grafana/loki:3.2.1
     container_name: loki
+    restart: unless-stopped
     command: ["-config.file=/etc/loki/loki.yaml"]
-    ports:
-      - "3100:3100"
     volumes:
       - ./observability/loki/loki.yaml:/etc/loki/loki.yaml:ro
     networks:
       - backend_net
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.17.0
     container_name: alloy
+    restart: unless-stopped
+    user: "0"
     command: ["run", "/etc/alloy/config.alloy"]
     volumes:
       - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
@@ -95,6 +106,7 @@ services:
   keycloak:
     image: keycloak/keycloak:26.5
     container_name: keycloak
+    restart: unless-stopped
     command: start-dev --import-realm
     environment:
       KC_DB: postgres
@@ -122,11 +134,11 @@ services:
 
   # --- BACKEND SERVICES ---
   quiz-service:
-    build: ./backend/quiz_service
+    build:
+      context: ./backend/quiz_service
+      dockerfile: Dockerfile
     container_name: quiz_service
-    ports:
-      - "8001:8001"
-      - "50051:50051"
+    restart: unless-stopped
     environment:
       IS_LOCAL: "true"
       KEYCLOAK_URL: http://keycloak:8080/identity
@@ -149,7 +161,7 @@ services:
       - "traefik.http.routers.quiz.middlewares=quiz-strip"
     depends_on:
       mongo: 
-        condition: service_started
+        condition: service_healthy
       keycloak:
         condition: service_started
       tempo:
@@ -158,7 +170,10 @@ services:
       - backend_net
 
   game-service:
-    build: ./backend/game_service
+    build: 
+      context: ./backend/game_service
+      dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       IS_LOCAL: "true"
       KEYCLOAK_URL: http://keycloak:8080/identity
@@ -172,6 +187,12 @@ services:
       OTEL_TRACES_SAMPLER_ARG: "1.0"
       HTTP_LOG_BODIES: "false"
       HTTP_LOG_MAX_BODY_BYTES: "4096"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.game.rule=PathPrefix(`/api/game`) || PathPrefix(`/ws`)"
+      - "traefik.http.middlewares.game-strip.stripprefix.prefixes=/api"
+      - "traefik.http.routers.game.middlewares=game-strip"
+      - "traefik.http.services.game.loadbalancer.server.port=8002"
     depends_on:
       redis: 
         condition: service_healthy
@@ -179,12 +200,6 @@ services:
         condition: service_started
       tempo:
         condition: service_started
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.game.rule=PathPrefix(`/api/game`) || PathPrefix(`/ws`)"
-      - "traefik.http.middlewares.game-strip.stripprefix.prefixes=/api"
-      - "traefik.http.routers.game.middlewares=game-strip"
-      - "traefik.http.services.game.loadbalancer.server.port=8002"
     networks:
       - backend_net
     deploy:
@@ -192,8 +207,11 @@ services:
 
   # --- FRONTEND ---
   frontend:
-    build: ./frontend
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: frontend
+    restart: unless-stopped
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
@@ -210,6 +228,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      - "--accesslog=true"
     ports:
       - "80:80"
       - "8085:8080"
