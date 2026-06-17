@@ -71,14 +71,11 @@ The system is designed as a distributed set of services:
 
 ### Setup
 
-1. Create a `.env` file in the project root and configure Keycloak and PostgreSQL credentials:
-   ```env
-   POSTGRES_USER=username
-   POSTGRES_PASSWORD=password
-
-   KEYCLOAK_ADMIN=admin
-   KEYCLOAK_ADMIN_PASSWORD=password
+1. Copy the example environment file to create your local `.env` file:
+   ```bash
+   cp .env.example .env
    ```
+
 2. Launch the full application:
    ```bash
    docker compose up -d
