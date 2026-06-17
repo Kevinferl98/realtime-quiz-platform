@@ -126,6 +126,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.keycloak.rule=PathPrefix(`/identity`)"
       - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
+      - "traefik.docker.network=backend_net"
     depends_on:
       postgres: 
         condition: service_healthy
@@ -159,6 +160,7 @@ services:
       - "traefik.http.services.quiz.loadbalancer.server.port=8001"
       - "traefik.http.middlewares.quiz-strip.stripprefix.prefixes=/api"
       - "traefik.http.routers.quiz.middlewares=quiz-strip"
+      - "traefik.docker.network=backend_net"
     depends_on:
       mongo: 
         condition: service_healthy
@@ -193,6 +195,7 @@ services:
       - "traefik.http.middlewares.game-strip.stripprefix.prefixes=/api"
       - "traefik.http.routers.game.middlewares=game-strip"
       - "traefik.http.services.game.loadbalancer.server.port=8002"
+      - "traefik.docker.network=backend_net"
     depends_on:
       redis: 
         condition: service_healthy
@@ -217,7 +220,7 @@ services:
       - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
       - "traefik.http.services.frontend.loadbalancer.server.port=8080"
     networks:
-      - backend_net
+      - frontend_net
 
   # --- API GATEWAY ---
   traefik:
@@ -235,10 +238,13 @@ services:
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     networks:
+      - frontend_net
       - backend_net
     
 networks:
   backend_net:
+    driver: bridge
+  frontend_net:
     driver: bridge
 
 volumes:
