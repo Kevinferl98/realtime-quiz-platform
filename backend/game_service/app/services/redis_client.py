@@ -1,6 +1,5 @@
 import redis.asyncio as redis
 import json
-import logging
 import uuid
 import time
 from app.schemas.multiplayer import Player
