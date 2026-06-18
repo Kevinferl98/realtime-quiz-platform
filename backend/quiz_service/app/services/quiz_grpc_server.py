@@ -6,6 +6,9 @@ from app.db.mongo_client import mongo_db
 from opentelemetry import trace
 from opentelemetry.context import attach, detach
 from opentelemetry.propagate import extract
+from my_observability import get_logger
+
+logger = get_logger(__name__)
 
 class QuizServiceServicer(quiz_service_pb2_grpc.QuizServiceServicer):
     def __init__(self, quiz_service: QuizService):
@@ -51,5 +54,5 @@ async def serve():
     )
     server.add_insecure_port("[::]:50051")
     await server.start()
-    print("Quiz gRPC server running on port 50051")
+    logger.info("Quiz gRPC server running on port 50051")
     await server.wait_for_termination()
