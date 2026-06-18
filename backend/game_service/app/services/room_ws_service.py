@@ -1,11 +1,11 @@
 import uuid
-import logging
 from fastapi import WebSocket
 from app.schemas.multiplayer import Player
 from app.auth import get_current_user
 from app.domain.room_session import RoomSession
+from my_observability import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class RoomWebSocketService:
     """Manages the lifecycle of individual WebSocket connections, parsing inbound user actions."""

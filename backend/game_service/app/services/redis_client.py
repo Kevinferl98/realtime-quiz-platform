@@ -1,12 +1,12 @@
-from app.schemas.multiplayer import Player
-from app.config import config
 import redis.asyncio as redis
 import json
-import logging
 import uuid
 import time
+from app.schemas.multiplayer import Player
+from app.config import config
+from my_observability import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class RedisClient:
     def __init__(self):

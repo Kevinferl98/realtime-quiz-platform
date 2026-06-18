@@ -1,13 +1,13 @@
 import asyncio
-import logging
 from contextlib import suppress
 from typing import Dict, Optional
 from fastapi import WebSocket
 from app.services.redis_client import RedisClient
 from app.services.connection_manager import ConnectionManager
 from app.services.quiz_engine import QuizEngine
+from my_observability import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 QUIZ_LOCK_TTL = 60
 
@@ -58,7 +58,7 @@ class RoomManager:
     async def connect(self, room_id: str, websocket: WebSocket) -> None:
         """Delegates incoming physical WebSocket routing to the ConnectionManager mapping."""
         await self._connection_manager.add_connection(room_id, websocket)
-        logger.debug("WebSocket source successfully registered", extra={"room_id": room_id})
+        logger.debug("WebSocket source successfully registered", room_id=room_id)
 
     async def disconnect(self, room_id: str, websocket: WebSocket) -> None:
         """Handles connection teardown, removing player sessions and cleanup of empty rooms."""
@@ -79,7 +79,7 @@ class RoomManager:
                 }
             )
 
-        logger.debug("WebSocket source disconnected and deallocated", extra={"room_id": room_id})
+        logger.debug("WebSocket source disconnected and deallocated", room_id=room_id)
 
     async def register_player_ws(self, websocket: WebSocket, player_id: str) -> None:
         """Maps a verified WebSocket connection to its unique internal player ID string."""
@@ -90,13 +90,13 @@ class RoomManager:
         lock_key = f"quiz_lock:{room_id}"
         acquired = await self._redis.acquire_lock(lock_key, QUIZ_LOCK_TTL)
         if not acquired:
-            logger.warning("Cannot start quiz: lock already acquired by another instance", extra={"room_id": room_id})
+            logger.warning("Cannot start quiz: lock already acquired by another instance", room_id=room_id)
             return
 
         async with self._global_lock:
             if room_id in self._quiz_tasks:
                 await self._redis.release_lock(lock_key)
-                logger.warning("Quiz for this room is already running locally", extra={"room_id": room_id})
+                logger.warning("Quiz for this room is already running locally", room_id=room_id)
                 return
 
             engine = QuizEngine(room_id, lock_key, self._redis, self._answer_events)
@@ -120,7 +120,7 @@ class RoomManager:
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
-        logger.info("Room resources and tasks released (empty room)", extra={"room_id": room_id})
+        logger.info("Room resources and tasks released (empty room)", room_id=room_id)
 
     async def _listen_redis_pubsub(self) -> None:
         """Mounts the primary cross-instance message router subscription broker."""

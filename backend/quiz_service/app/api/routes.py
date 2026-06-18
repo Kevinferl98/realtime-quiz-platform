@@ -1,4 +1,3 @@
-import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
 from app.auth import get_current_user
 from app.schemas.quiz import (
@@ -8,8 +7,9 @@ from app.schemas.quiz import (
 )
 from app.services.quiz_service import QuizService
 from app.dependencies import get_quiz_service
+from my_observability import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 
 def get_current_user_required(user=Depends(get_current_user)):
@@ -34,7 +34,7 @@ def list_public_quizzes(
 
     logger.info(
         "public_quizzes_listed",
-        extra={"page": page, "limit": limit, "count": len(quizzes)}
+        page=page, limit=limit, count=len(quizzes)
     )
 
     return QuizzesResponsePaginated(
@@ -54,7 +54,7 @@ def list_my_quizzes(user=Depends(get_current_user_required), service: QuizServic
 
     logger.info(
         "personal_quizzes_listed",
-        extra={"user_id": user["sub"], "count": len(quizzes)}
+        user_id= user["sub"], count= len(quizzes)
     )
 
     return QuizzesResponse(
@@ -70,7 +70,7 @@ def list_my_quizzes(user=Depends(get_current_user_required), service: QuizServic
 def get_quiz(quiz_id: str = Path(..., min_length=1), service: QuizService = Depends(get_quiz_service)):
     quiz = service.get_quiz_by_id(quiz_id)
 
-    logger.info("quiz_retrieved", extra={"quiz_id": quiz_id})
+    logger.info("quiz_retrieved", quiz_id= quiz_id)
 
     return QuizDetailResponse(
         quizId=quiz["quizId"],
@@ -96,7 +96,7 @@ def create_quiz(quiz: QuizCreateRequest, user=Depends(get_current_user_required)
 
     logger.info(
         "quiz_created",
-        extra={"quiz_id": quiz_id, "user_id": user["sub"]}
+        quiz_id= quiz_id, user_id= user["sub"]
     )
 
     return QuizCreateResponse(success=True, quizId=quiz_id)
@@ -115,7 +115,7 @@ def delete_quiz(quiz_id: str = Path(..., min_length=1), user=Depends(get_current
 
     logger.info(
         "quiz_deleted",
-        extra={"quiz_id": quiz_id, "user_id": user["sub"]}
+        quiz_id= quiz_id, user_id= user["sub"]
     )
 
     return QuizDeleteResponse(success=True)

@@ -1,15 +1,15 @@
 import grpc
 import os
-import logging
 from app.services.grpc_generated import quiz_service_pb2, quiz_service_pb2_grpc
 from opentelemetry.propagate import inject
 from typing import Optional, Dict
 from app.exception import QuizNotFoundError
+from my_observability import get_logger
 
 QUIZ_SERVICE_HOST = os.getenv("QUIZ_SERVICE_HOST", "quiz_service:50051")
 GRPC_TIMEOUT_SECONDS = float(os.getenv("GRPC_TIMEOUT_SECONDS", "5.0"))
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class QuizServiceClient:
     def __init__(self, host: str = QUIZ_SERVICE_HOST):
