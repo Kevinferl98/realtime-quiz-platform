@@ -17,8 +17,13 @@ from app.exception_handlers import (
 )
 from app.services.quiz_grpc_server import serve as serve_grpc
 from app.db.mongo_client import mongo_db
-from app.telemetry import setup_telemetry, shutdown_telemetry
-from my_observability import setup_observability, setup_fastapi_logging
+from my_observability import (
+    setup_observability,
+    setup_fastapi_logging,
+    init_telemetry,
+    shutdown_telemetry
+)
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 INFRASTRUCTURE_LOGGERS = {
     "pymongo": {"level": "WARNING"}
@@ -31,6 +36,12 @@ setup_observability(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_telemetry(
+        service_name=config.OTEL_SERVICE_NAME,
+        environment=config.ENV,
+        endpoint=config.OTEL_EXPORTER_OTLP_ENDPOINT,
+        protocol="grpc"
+    )
     grpc_task = asyncio.create_task(serve_grpc())
     print("gRPC server stated on port 50051")
     mongo_db.connect()
@@ -44,10 +55,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-setup_telemetry(app)
+FastAPIInstrumentor.instrument_app(app)
 setup_fastapi_logging(app)
-app.include_router(router)
 
+app.include_router(router)
 app.add_exception_handler(QuizNotFoundError, quiz_not_found_handler)
 app.add_exception_handler(QuestionNotFoundError, question_not_found_handler)
 app.add_exception_handler(QuizPermissionError, permission_error_handler)
