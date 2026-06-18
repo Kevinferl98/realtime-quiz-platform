@@ -1,16 +1,16 @@
 import random
-import logging
 from app.exception import QuizNotFoundError
 from app.services.redis_client import RedisClient
 from app.schemas.multiplayer import RoomCreateResponse
 from app.services.quiz_grpc_client import QuizServiceClient
 from fastapi import HTTPException
+from my_observability import get_logger
 
 CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 ROOM_TTL_SECONDS = 3600
 MAX_RETRIES = 5
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 def generate_room_code(length: int = 5) -> str:
     return "".join(random.choices(CHARS, k=length))

@@ -1,11 +1,11 @@
 import asyncio
-import logging
 import time
 from contextlib import suppress
 from typing import Dict, Optional
 from app.services.redis_client import RedisClient
+from my_observability import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 QUESTION_DURATION = 15
 LEADERBOARD_DURATION = 8
@@ -21,16 +21,16 @@ class QuizEngine:
 
     async def run_lifecycle(self) -> None:
         """Executes the complete quiz loop from question progression to the final leaderboard."""
-        logger.info("Quiz lifecycle started", extra={"room_id": self.room_id})
+        logger.info("Quiz lifecycle started", room_id=self.room_id)
         try:
             room_meta = await self._redis.get_room_meta(self.room_id)
             if not room_meta:
-                logger.warning("Room metadata not found on quiz start", extra={"room_id": self.room_id})
+                logger.warning("Room metadata not found on quiz start", room_id=self.room_id)
                 return
 
             questions = await self._redis.get_all_questions(self.room_id)
             if not questions:
-                logger.warning("No questions found for room", extra={"room_id": self.room_id})
+                logger.warning("No questions found for room", room_id=self.room_id)
                 return
 
             # Initialize room state as started before entering the question loop.
@@ -61,10 +61,10 @@ class QuizEngine:
                     await asyncio.sleep(LEADERBOARD_DURATION)
 
         except asyncio.CancelledError:
-            logger.info("Quiz execution explicitly cancelled", extra={"room_id": self.room_id})
+            logger.info("Quiz execution explicitly cancelled", room_id=self.room_id)
             raise
         except Exception as e:
-            logger.exception("Critical crash in QuizEngine execution loop", extra={"room_id": self.room_id, "exception": e})
+            logger.exception("Critical crash in QuizEngine execution loop", room_id=self.room_id, exception=e)
         finally:
             await self._reset_room_state(room_meta)
 

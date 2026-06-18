@@ -3,9 +3,9 @@ from app.services import room_service
 from app.auth import get_current_user
 from app.dependencies import get_redis_client
 from app.schemas.multiplayer import RoomCreateResponse
-import logging
+from my_observability import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter(prefix="/game", tags=["game"])
 
 @router.post(

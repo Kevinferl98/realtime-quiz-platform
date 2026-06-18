@@ -1,14 +1,19 @@
 from fastapi import FastAPI
 from app.api.routes import router
 from app.api.routes_ws import router_ws
-from app.logging_config import setup_logging
-from app.middleware.logging_middleware import setup_http_logging
+from app.config import config
 from app.dependencies import get_room_manager
 from app.services.quiz_grpc_client import QuizServiceClient
 from app.telemetry import setup_telemetry, shutdown_telemetry
 from contextlib import asynccontextmanager
+from my_observability import (
+    setup_observability,
+    setup_fastapi_logging
+)
 
-setup_logging()
+setup_observability(
+    log_level=config.LOG_LEVEL
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,7 +37,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 setup_telemetry(app)
-setup_http_logging(app)
+setup_fastapi_logging(app)
 
 app.include_router(router)
 app.include_router(router_ws)
