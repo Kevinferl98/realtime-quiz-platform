@@ -10,7 +10,7 @@ class MongoDB:
         self.db = None
 
     def connect(self):
-        uri = os.environ.get("MONGO_URI",  "mongodb://localhost:27017")
+        uri = os.getenv("MONGO_URI",  "mongodb://localhost:27017")
         self.client = MongoClient(uri)
         self.db = self.client["quiz_app"]
         logger.info("Connected to MongoDB")
