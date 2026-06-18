@@ -171,18 +171,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      IS_LOCAL: "true"
       KEYCLOAK_URL: http://keycloak:8080/identity
       KEYCLOAK_REALM: quiz
       KEYCLOAK_CLIENT_ID: account
       KEYCLOAK_ISSUER: http://localhost/identity/realms
-      OTEL_ENABLED: "true"
       OTEL_SERVICE_NAME: "game_service"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4317"
-      OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
-      OTEL_TRACES_SAMPLER_ARG: "1.0"
-      HTTP_LOG_BODIES: "false"
-      HTTP_LOG_MAX_BODY_BYTES: "4096"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.game.rule=PathPrefix(`/api/game`) || PathPrefix(`/ws`)"
