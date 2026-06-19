@@ -220,6 +220,11 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--accesslog=true"
+      - "--tracing=true"
+      - "--tracing.otlp=true"
+      - "--tracing.otlp.http=false"
+      - "--tracing.otlp.grpc.endpoint=tempo:4317"
+      - "--tracing.otlp.grpc.insecure=true"
     ports:
       - "80:80"
       - "8085:8080"
