@@ -6,4 +6,5 @@ Dockerfile
 docker-compose.yml
 .env
 .env.*
+*.env
 npm-debug.log
