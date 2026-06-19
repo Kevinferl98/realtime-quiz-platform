@@ -234,12 +234,14 @@ services:
       - frontend_net
       - backend_net
     
+# --- NETWORKS ---
 networks:
   backend_net:
     driver: bridge
   frontend_net:
     driver: bridge
 
+# --- VOLUMES ---
 volumes:
   redis_data:
   keycloak_db_data:
