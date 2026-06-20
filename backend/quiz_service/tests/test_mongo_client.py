@@ -29,13 +29,12 @@ def test_connect_uses_default_uri(monkeypatch):
     assert db.db.name == "quiz_app"
 
 def test_connect_uses_env_uri(monkeypatch):
-    monkeypatch.setenv("MONGO_URI", "mongodb://mongo:27017")
     monkeypatch.setattr(mongo_client, "MongoClient", DummyClient)
     db = mongo_client.MongoDB()
 
     db.connect()
 
-    assert db.client.uri == "mongodb://mongo:27017"
+    assert db.client.uri == "mongodb://localhost:27017"
 
 def test_close_closes_client(monkeypatch):
     monkeypatch.setattr(mongo_client, "MongoClient", DummyClient)

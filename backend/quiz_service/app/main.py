@@ -2,7 +2,7 @@ import asyncio
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.api.routes import router
-from app.config import config
+from app.core.config import config
 from app.exception import (
     QuizNotFoundError,
     QuestionNotFoundError,

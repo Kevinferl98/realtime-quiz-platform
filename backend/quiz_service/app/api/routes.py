@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Response
 from app.auth import get_current_user
+from app.core.http_cache import cache_control
 from app.schemas.quiz import (
     AnswerResponse, AnswerRequest, QuizzesResponse,
     QuizCreateRequest, QuizCreateResponse, QuizDeleteResponse, QuizOut, QuizDetailResponse,
@@ -8,6 +9,7 @@ from app.schemas.quiz import (
 from app.services.quiz_service import QuizService
 from app.dependencies import get_quiz_service
 from my_observability import get_logger
+from app.core.config import config
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
@@ -25,7 +27,12 @@ def get_current_user_required(user=Depends(get_current_user)):
     response_model=QuizzesResponsePaginated,
     summary="List public quizzes"
 )
+@cache_control(
+    max_age=config.CACHE_PUBLIC_QUIZZES_TTL,
+    stale_while_revalidate=config.CACHE_PUBLIC_QUIZZES_SWR
+)
 def list_public_quizzes(
+        response: Response,
         page: int = Query(1, ge=1),
         limit: int = Query(10, ge=1, le=100),
         service: QuizService = Depends(get_quiz_service)
