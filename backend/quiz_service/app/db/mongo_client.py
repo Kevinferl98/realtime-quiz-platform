@@ -1,6 +1,6 @@
-import os
 from pymongo import MongoClient
 from my_observability import get_logger
+from app.core.config import config
 
 logger = get_logger(__name__)
 
@@ -10,7 +10,7 @@ class MongoDB:
         self.db = None
 
     def connect(self):
-        uri = os.getenv("MONGO_URI",  "mongodb://localhost:27017")
+        uri = config.MONGO_URI
         self.client = MongoClient(uri)
         self.db = self.client["quiz_app"]
         logger.info("Connected to MongoDB")

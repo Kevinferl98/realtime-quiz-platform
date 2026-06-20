@@ -1,18 +1,11 @@
 from fastapi import Header, HTTPException
-import os
 import jwt
 from jwt import PyJWKClient
+from app.core.config import config
 
-KEYCLOAK_URL = os.getenv("KEYCLOAK_URL")
-REALM = os.getenv("KEYCLOAK_REALM")
-CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID")
-KEYCLOAK_ISSUER = os.getenv("KEYCLOAK_ISSUER")
-
-JWKS_URL = f"{KEYCLOAK_URL}/realms/{REALM}/protocol/openid-connect/certs"
+JWKS_URL = f"{config.KEYCLOAK_URL}/realms/{config.KEYCLOAK_REALM}/protocol/openid-connect/certs"
 
 jwks_client = PyJWKClient(JWKS_URL)
-
-USE_LOCAL_AUTH = os.getenv("USE_LOCAL_AUTH", "true").lower() == "true"
 
 def get_current_user(authorization: str = Header(...)):
     if not authorization.startswith("Bearer "):
@@ -27,8 +20,8 @@ def get_current_user(authorization: str = Header(...)):
             token,
             signing_key.key,
             algorithms=["RS256"],
-            audience=CLIENT_ID,
-            issuer=f"{KEYCLOAK_ISSUER}/{REALM}",
+            audience=config.KEYCLOAK_CLIENT_ID,
+            issuer=f"{config.KEYCLOAK_ISSUER}/{config.KEYCLOAK_REALM}",
             options={
                 "verify_exp": True,
                 "verify_iss": True
