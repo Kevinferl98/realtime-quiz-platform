@@ -63,6 +63,8 @@ The system is designed as a distributed set of services:
 
 **Observability**: Traces and logs are centralized in Grafana. Backend services emit OpenTelemetry traces and structured JSON logs with `trace_id` / `span_id` correlation.
 
+**Shared Observability Library**: Logging and tracing is decoupled into a dedicated, reusable GitHub repository (fastapi-observability-lib).
+
 ## Running the Application
 
 ### Prerequisites
