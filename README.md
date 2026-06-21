@@ -57,6 +57,8 @@ The system is designed as a distributed set of services:
 
 **Redis for State Management**: Since game rooms are highly volatile, Redis provides the sub-millisecond latency required to track game status.
 
+**WebSocket Connection Resilience**: To prevent resource leaks caused by silent client disconnections, the Game Service leverages native Uvicorn protocol-level heartbeats.
+
 **Horizontal Scalability**: The architecture is designed to scale horizontally. By combining Traefik’s load balancing with Redis Pub/Sub, the platform can handle increased loads by simply spinning up more service replicas without losing state consistency.
 
 **CI**: Automated pipeline via GitHub Actions that runs Linter and Unit Tests on every push, ensuring code quality and coverage for the backend.
