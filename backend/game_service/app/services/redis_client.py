@@ -3,7 +3,7 @@ import json
 import uuid
 import time
 from app.schemas.multiplayer import Player
-from app.config import config
+from app.core.config import config
 from my_observability import get_logger
 
 logger = get_logger(__name__)

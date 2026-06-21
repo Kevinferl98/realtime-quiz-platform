@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Response
-from app.auth import get_current_user
+from fastapi import APIRouter, Depends, status, Path, Query, Response
 from app.core.http_cache import cache_control
 from app.schemas.quiz import (
     AnswerResponse, AnswerRequest, QuizzesResponse,
@@ -7,20 +6,12 @@ from app.schemas.quiz import (
     QuestionOut, QuizzesResponsePaginated
 )
 from app.services.quiz_service import QuizService
-from app.dependencies import get_quiz_service
+from app.dependencies import get_quiz_service, get_current_user
 from my_observability import get_logger
 from app.core.config import config
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
-
-def get_current_user_required(user=Depends(get_current_user)):
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
-        )
-    return user
 
 @router.get(
     "/public",
@@ -56,7 +47,7 @@ def list_public_quizzes(
     response_model=QuizzesResponse,
     summary="List user's quizzes"
 )
-def list_my_quizzes(user=Depends(get_current_user_required), service: QuizService = Depends(get_quiz_service)):
+def list_my_quizzes(user=Depends(get_current_user), service: QuizService = Depends(get_quiz_service)):
     quizzes = service.list_personal_quizzes(user["sub"])
 
     logger.info(
@@ -95,7 +86,7 @@ def get_quiz(quiz_id: str = Path(..., min_length=1), service: QuizService = Depe
     status_code=status.HTTP_201_CREATED,
     summary="Create quiz"
 )
-def create_quiz(quiz: QuizCreateRequest, user=Depends(get_current_user_required), service: QuizService = Depends(get_quiz_service)):
+def create_quiz(quiz: QuizCreateRequest, user=Depends(get_current_user), service: QuizService = Depends(get_quiz_service)):
     quiz_id = service.create_quiz(
         quiz_data=quiz,
         owner_id=user["sub"]
@@ -117,7 +108,7 @@ def create_quiz(quiz: QuizCreateRequest, user=Depends(get_current_user_required)
         403: {"description": "Forbidden"}
     }
 )
-def delete_quiz(quiz_id: str = Path(..., min_length=1), user=Depends(get_current_user_required), service: QuizService = Depends(get_quiz_service)):
+def delete_quiz(quiz_id: str = Path(..., min_length=1), user=Depends(get_current_user), service: QuizService = Depends(get_quiz_service)):
     service.delete_quiz(quiz_id=quiz_id, user_id=user["sub"])
 
     logger.info(

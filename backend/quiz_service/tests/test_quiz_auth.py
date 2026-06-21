@@ -1,53 +1,60 @@
 import pytest
-from fastapi import HTTPException
-from unittest.mock import patch, MagicMock
-from app.auth import get_current_user
 import jwt
+from fastapi import HTTPException
+from unittest.mock import patch
+from fastapi.security import HTTPAuthorizationCredentials
+from app.dependencies import get_current_user
 
-def test_get_current_user_missing_bearer():
+def create_credentials(token: str) -> HTTPAuthorizationCredentials:
+    return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+@patch("app.core.security.decode_access_token")
+def test_get_current_user_invalid_token_format(mock_decode):
+    mock_decode.side_effect = Exception("Invalid token format")
+
+    creds = create_credentials("InvalidFormat token123")
+
     with pytest.raises(HTTPException) as exc:
-        get_current_user("InvalidFormat token123")
-    assert exc.value.status_code == 401
-    assert exc.value.detail == "Bearer token missing"
+        get_current_user(creds)
 
-@patch("app.auth.jwks_client.get_signing_key_from_jwt")
-@patch("jwt.decode")
-def test_get_current_user_success(mock_jwt_decode, mock_get_key):
-    mock_key = MagicMock()
-    mock_key.key = "fake-public-key"
-    mock_get_key.return_value = mock_key
-    
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Invalid or expired token"
+
+@patch("app.dependencies.decode_access_token")
+def test_get_current_user_success(mock_decode_token):
     expected_payload = {
         "sub": "user_123",
         "email": "test@example.com",
         "preferred_username": "john.doe"
     }
-    mock_jwt_decode.return_value = expected_payload
+    mock_decode_token.return_value = expected_payload
 
-    result = get_current_user("Bearer fake-token-123")
+    creds = create_credentials("fake-token-123")
+    result = get_current_user(creds)
 
     assert result == expected_payload
-    mock_jwt_decode.assert_called_once()    
+    mock_decode_token.assert_called_once_with("fake-token-123")
 
-@patch("app.auth.jwks_client.get_signing_key_from_jwt")
-def test_get_current_user_jwks_error(mock_get_key):
-    mock_get_key.side_effect = Exception("JWKS endpoint unreachable")
-    
+@patch("app.dependencies.decode_access_token")
+def test_get_current_user_jwks_error(mock_decode_token):
+    mock_decode_token.side_effect = Exception("JWKS endpoint unreachable")
+
+    creds = create_credentials("some-token")
+
     with pytest.raises(HTTPException) as exc:
-        get_current_user("Bearer some-token")
+        get_current_user(creds)
     
     assert exc.value.status_code == 401
-    assert "Invalid token" in exc.value.detail
+    assert exc.value.detail == "Invalid or expired token"
 
-@patch("app.auth.jwks_client.get_signing_key_from_jwt")
-@patch("jwt.decode")
-def test_get_current_user_expired_token(mock_jwt_decode, mock_get_key):
-    mock_get_key.return_value = MagicMock(key="fake-key")
-    
-    mock_jwt_decode.side_effect = jwt.ExpiredSignatureError("Token expired")
-    
+@patch("app.dependencies.decode_access_token")
+def test_get_current_user_expired_token(mock_decode_token):
+    mock_decode_token.side_effect = jwt.ExpiredSignatureError("Token expired")
+
+    creds = create_credentials("expired-token")
+
     with pytest.raises(HTTPException) as exc:
-        get_current_user("Bearer expired-token")
+        get_current_user(creds)
     
     assert exc.value.status_code == 401
-    assert "Token expired" in exc.value.detail
+    assert exc.value.detail == "Invalid or expired token"

@@ -1,9 +1,9 @@
 import uuid
 from fastapi import WebSocket
 from app.schemas.multiplayer import Player
-from app.auth import get_current_user
 from app.domain.room_session import RoomSession
 from my_observability import get_logger
+from app.core.security import authenticate_token_string
 
 logger = get_logger(__name__)
 
@@ -169,7 +169,7 @@ class RoomWebSocketService:
             return None
 
         try:
-            return get_current_user(f"Bearer {token}")
+            return authenticate_token_string(token)
         except Exception:
             return None
     
