@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 class QuizGenerateRequest(BaseModel):
-    prompt: str = Field(
+    topic: str = Field(
         ...,
         description="The theme or description on which to base the quiz"
     )
@@ -19,7 +19,7 @@ class QuizGenerateRequest(BaseModel):
 
 class QuestionFields(BaseModel):
     question_text: str = Field(..., description="The text of the question")
-    options: List[str] = Field(..., description="List of answer options")
+    options: List[str] = Field(..., min_length=4, max_length=4, description="List of answer options")
     correct_answer: str = Field(..., description="The exact string corresponding to the correct answer")
 
 class QuizGenerateResponse(BaseModel):
