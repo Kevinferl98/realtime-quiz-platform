@@ -1,14 +1,14 @@
 import os
 import yaml
-import logging
 from pydantic import BaseModel, ValidationError
 from app.exception import PromptNotFoundError
+from my_observability import get_logger
 
 class PromptTemplate(BaseModel):
     system_prompt: str
     user_template: str
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class PromptManager:
     def __init__(self, registry_path: str | None = None) -> None:

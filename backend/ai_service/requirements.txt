@@ -2,3 +2,5 @@ fastapi==0.138.2
 uvicorn[standard]==0.49.0
 pytest==9.1.1
 pytest-cov==7.1.0
+
+git+https://github.com/Kevinferl98/fastapi-observability-lib.git@v1.3.0

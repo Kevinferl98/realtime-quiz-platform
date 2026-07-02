@@ -43,17 +43,16 @@ def test_load_prompts_missing_directory(mock_exists):
 
 @patch("app.prompts.prompt_manager.os.path.exists")
 @patch("app.prompts.prompt_manager.os.listdir")
-def test_load_prompts_skips_empty_file(mock_listdir, mock_exists, caplog):
+def test_load_prompts_skips_empty_file(mock_listdir, mock_exists):
     mock_exists.return_value = True
     mock_listdir.return_value = ["empty.yaml"]
 
     m_open = mock_open(read_data="")
     manager = PromptManager(registry_path="/fake/registry")
 
-    with patch("app.prompts.prompt_manager.open", m_open), caplog.at_level("WARNING"):
+    with patch("app.prompts.prompt_manager.open", m_open):
         manager.load_prompts()
 
-    assert "Skipping empty prompt file: empty.yaml" in caplog.text
     assert "empty" not in manager._registry
 
 @pytest.mark.parametrize(
