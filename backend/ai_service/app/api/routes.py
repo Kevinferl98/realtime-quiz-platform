@@ -1,5 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from app.schemas.generation import QuizGenerateRequest, QuizGenerateResponse
+from app.services.quiz_generator_service import QuizGeneratorService
+from app.dependencies import get_quiz_service
 
 router = APIRouter(prefix="/v1/ai", tags=["AI Generation"])
 
@@ -9,9 +11,5 @@ router = APIRouter(prefix="/v1/ai", tags=["AI Generation"])
     status_code=200,
     summary="Generate a quiz using AI"
 )
-def generate_quiz(request: QuizGenerateRequest) -> QuizGenerateResponse:
-    return QuizGenerateResponse(
-        title="title",
-        description="description",
-        questions=[]
-    )
+async def generate_quiz(request: QuizGenerateRequest, quiz_service: QuizGeneratorService = Depends(get_quiz_service)) -> QuizGenerateResponse:
+    return await quiz_service.generate_quiz_preview(request)
