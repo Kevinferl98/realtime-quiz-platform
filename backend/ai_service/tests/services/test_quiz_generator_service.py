@@ -45,7 +45,7 @@ async def test_generate_quiz_preview_success(quiz_service, mock_ollama_client, v
     Ensure a valid JSON response from Ollama is correctly
     parsed and returned as a QuizGenerateResponse instance.
     """
-    mock_response_content = '{"title": "quiz", "questions": [{"question_text": "Question", "options": ["A", "B", "C", "D"], "correct_answer": "A"}]}'
+    mock_response_content = '{"title": "quiz", "questions": [{"question_text": "Question", "options": ["A", "B", "C", "D"], "correct_answer_index": 0}]}'
 
     mock_ollama_client.chat.return_value = {
         "message": {

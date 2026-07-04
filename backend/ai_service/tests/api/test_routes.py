@@ -42,7 +42,7 @@ def test_generate_quiz_success(client, mock_quiz_generator_service, valid_payloa
         "title": "Quiz",
         "description": None,
         "questions": [
-            {"question_text": "Question text", "options": ["A", "B", "C", "D"], "correct_answer": "A"}
+            {"question_text": "Question text", "options": ["A", "B", "C", "D"], "correct_answer_index": 0}
         ]
     }
 
