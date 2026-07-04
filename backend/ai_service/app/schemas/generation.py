@@ -20,7 +20,7 @@ class QuizGenerateRequest(BaseModel):
 class QuestionFields(BaseModel):
     question_text: str = Field(..., description="The text of the question")
     options: List[str] = Field(..., min_length=4, max_length=4, description="List of answer options")
-    correct_answer: str = Field(..., description="The exact string corresponding to the correct answer")
+    correct_answer_index: int = Field(..., ge=0, le=3, description="The 0-based index of the correct answer inside the options array (0 to 3).")
 
 class QuizGenerateResponse(BaseModel):
     title: str = Field(..., description="Title generated for the quiz")
