@@ -82,7 +82,10 @@
 }
 
 .mq-icon-trash {
-  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
 }
 
 .mq-empty-state {
@@ -94,9 +97,11 @@
 }
 
 .mq-empty-icon {
-  font-size: 3rem;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 16px;
+  color: var(--mq-text-muted);
 }
 
 .mq-error-banner {

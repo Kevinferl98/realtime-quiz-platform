@@ -76,6 +76,11 @@ export function useHomePage() {
             navigate("/create");
         },
 
+        generateAI: () => {
+            if (!authenticated) return keycloak.login();
+            navigate("/generate-ai");
+        },
+
         createRoom: () => {
             if (!authenticated) return keycloak.login();
             navigate("/create-room");

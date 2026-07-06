@@ -24,9 +24,13 @@
 }
 
 .mq-icon {
-  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
 }
 
 .mq-action-card.create { color: var(--mq-primary); }
+.mq-action-card.ai-generate { color: var(--mq-generate-ai); }
 .mq-action-card.room { color: var(--mq-success); }
 .mq-action-card.profile { color: var(--mq-warning); }
