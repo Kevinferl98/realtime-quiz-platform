@@ -4,5 +4,6 @@ pytest==9.1.1
 pytest-cov==7.1.0
 pytest-asyncio==1.4.0
 ollama==0.6.2
+PyJWT[crypto]==2.12.1
 
 git+https://github.com/Kevinferl98/fastapi-observability-lib.git@v1.3.0

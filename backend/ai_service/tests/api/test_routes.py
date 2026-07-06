@@ -7,7 +7,7 @@ from app.exception_handlers import domain_error_handler
 from app.schemas.generation import QuizGenerateResponse
 from app.services.quiz_generator_service import QuizGeneratorService
 from unittest.mock import create_autospec
-from app.dependencies import get_quiz_service
+from app.dependencies import get_quiz_service, verify_jwt
 
 @pytest.fixture
 def test_app():
@@ -23,6 +23,7 @@ def mock_quiz_generator_service():
 @pytest.fixture
 def client(test_app, mock_quiz_generator_service):
     test_app.dependency_overrides[get_quiz_service] = lambda: mock_quiz_generator_service
+    test_app.dependency_overrides[verify_jwt] = lambda: None
 
     with TestClient(app=test_app) as test_client:
         yield test_client

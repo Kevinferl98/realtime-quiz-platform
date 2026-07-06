@@ -22,3 +22,11 @@ class AIProviderError(DomainError):
             title = title,
             detail = detail
         )
+
+class AuthenticationError(DomainError):
+    def __init__(self, detail: str = "Invalid or expired token"):
+        super().__init__(
+            status_code=401,
+            title="Unauthorized",
+            detail=detail
+        )
