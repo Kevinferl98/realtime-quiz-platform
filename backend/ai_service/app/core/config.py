@@ -15,4 +15,8 @@ class Config:
     KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID")
     KEYCLOAK_ISSUER = os.getenv("KEYCLOAK_ISSUER")
 
+    # --- OBSERVABILITY ---
+    OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "ai_service")
+    OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
+
 config = Config()
