@@ -1,4 +1,5 @@
 import "../../styles/myQuizzes/MyQuizList.css"
+import { FileText, Trash2 } from "lucide-react";
 
 interface Quiz {
     quizId: string;
@@ -33,7 +34,7 @@ export function MyQuizList({
 
             {!loading && !error && quizzes.length === 0 && (
                 <div className="mq-empty-state">
-                    <span className="mq-empty-icon">📝</span>
+                    <span className="mq-empty-icon"><FileText size={48} strokeWidth={1.5} /></span>
                     <p>You haven't created any quizzes yet.</p>
                 </div>
             )}
@@ -59,7 +60,7 @@ export function MyQuizList({
                                 onClick={() => onDelete(quiz.quizId)}
                                 title="Delete Quiz"
                             >
-                                <span className="mq-icon-trash">🗑️</span>
+                                <span className="mq-icon-trash"><Trash2 size={18} strokeWidth={2} /></span>
                             </button>
                         </div>
                     </div>

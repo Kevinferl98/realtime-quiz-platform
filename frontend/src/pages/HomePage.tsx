@@ -40,6 +40,7 @@ export default function HomePage() {
             onCreateQuiz={actions.createQuiz}
             onCreateRoom={actions.createRoom}
             onMyQuizzes={actions.goToMyQuizzes}
+            onGenerateAI={actions.generateAI}
           />
         </section>
 

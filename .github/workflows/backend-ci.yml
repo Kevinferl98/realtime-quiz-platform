@@ -57,6 +57,7 @@ jobs:
         service:
           - game_service
           - quiz_service
+          - ai_service
 
     steps:
       - name: Checkout

@@ -196,6 +196,34 @@ services:
     deploy:
       replicas: 3
 
+  ai-service:
+    build:
+      context: ./backend/ai_service
+      dockerfile: Dockerfile
+    container_name: ai_service
+    restart: unless-stopped
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      MODEL_NAME: ${OLLAMA_MODEL_NAME}
+      KEYCLOAK_URL: http://keycloak:8080/identity
+      KEYCLOAK_REALM: quiz
+      KEYCLOAK_CLIENT_ID: account
+      KEYCLOAK_ISSUER: http://localhost/identity/realms
+      OTEL_SERVICE_NAME: "ai_service"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4317"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ai.rule=PathPrefix(`/api/v1/ai`)"
+      - "traefik.http.services.ai.loadbalancer.server.port=8080"
+      - "traefik.http.middlewares.ai-strip.stripprefix.prefixes=/api"
+      - "traefik.http.routers.ai.middlewares=ai-strip"
+      - "traefik.docker.network=backend_net"
+    depends_on:
+      keycloak:
+        condition: service_started
+    networks:
+      - backend_net
+
   # --- FRONTEND ---
   frontend:
     build: 
