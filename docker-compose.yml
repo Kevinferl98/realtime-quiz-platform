@@ -203,8 +203,8 @@ services:
     container_name: ai_service
     restart: unless-stopped
     environment:
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
-      MODEL_NAME: llama3.1:8b
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      MODEL_NAME: ${OLLAMA_MODEL_NAME}
       KEYCLOAK_URL: http://keycloak:8080/identity
       KEYCLOAK_REALM: quiz
       KEYCLOAK_CLIENT_ID: account
