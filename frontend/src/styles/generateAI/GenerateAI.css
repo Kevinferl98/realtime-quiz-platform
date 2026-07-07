@@ -1,0 +1,100 @@
+.ai-gradient-text span {
+  background: linear-gradient(135deg, #4f46e5 0%, #d946ef 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.mq-ai-loader-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 24px;
+  background: var(--mq-card);
+  border-radius: var(--mq-radius-lg);
+  border: 1px solid var(--mq-border);
+  box-shadow: var(--mq-shadow);
+}
+
+.mq-spinner-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  color: #d946ef;
+}
+
+.mq-animate-spin {
+  animation: spin 1.5s linear infinite;
+}
+
+.mq-pulse-icon {
+  position: absolute;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.mq-ai-loader-container h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--mq-text-main);
+}
+
+.mq-ai-loader-container p {
+  margin: 0;
+  color: var(--mq-text-muted);
+  max-width: 480px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.mq-ai-preview-badge {
+  background: rgba(217, 70, 239, 0.08);
+  border: 1px solid rgba(217, 70, 239, 0.2);
+  padding: 12px;
+  border-radius: var(--mq-radius-md);
+  text-align: center;
+  color: #b71cc4;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.mq-error-banner-ai {
+  padding: 24px;
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+  color: var(--mq-danger);
+  border-radius: var(--mq-radius-lg);
+  text-align: center;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.mq-btn-retry {
+  background: var(--mq-danger);
+  color: white;
+  padding: 8px 20px;
+  border-radius: var(--mq-radius-md);
+  font-weight: 700;
+  font-size: 0.9rem;
+  transition: var(--mq-transition);
+}
+
+.mq-btn-retry:hover {
+  filter: brightness(1.1);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(0.9); opacity: 0.6; }
+  50% { transform: scale(1.1); opacity: 1; }
+}

@@ -211,7 +211,7 @@ services:
       KEYCLOAK_ISSUER: http://localhost/identity/realms
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.ai.rule=PathPrefix(`/api/ai`)"
+      - "traefik.http.routers.ai.rule=PathPrefix(`/api/v1/ai`)"
       - "traefik.http.services.ai.loadbalancer.server.port=8080"
       - "traefik.http.middlewares.ai-strip.stripprefix.prefixes=/api"
       - "traefik.http.routers.ai.middlewares=ai-strip"

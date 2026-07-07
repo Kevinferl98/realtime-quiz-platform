@@ -5,6 +5,7 @@ import SoloQuizPage from "./pages/SoloQuizPage";
 import MyQuizzesPage from "./pages/MyQuizzesPage";
 import CreateGameRoom from "./pages/CreateGameRoom";
 import RoomPage from "./pages/RoomPage";
+import GenerateAI from "./pages/GenerateAI";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/my-quizzes" element={<MyQuizzesPage />} />
         <Route path="/create-room" element={<CreateGameRoom />} />
         <Route path="/room/:room_id" element={<RoomPage />} />
+        <Route path="/generate-ai" element={<GenerateAI />} />
       </Routes>
     </Router>
   );
