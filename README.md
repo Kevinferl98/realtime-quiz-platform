@@ -5,6 +5,7 @@
 ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=for-the-badge&logo=mongodb&logoColor=white)
+![Ollama](https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white)
 
 A real-time multiplayer quiz platform where users can create, join, and compete in interactive challenges. Built with a distributed microservices architecture to handle persistent quiz data and low-latency game states.
 
@@ -29,6 +30,8 @@ The system is designed as a distributed set of services:
 **Quiz Service**: A Python (FastAPI) service that manages the lifecycle of quizzes (CRUD), persisting data in MongoDB.
 
 **Game Service**: The core engine for multiplayer logic. It handles WebSocket connections for real-time interaction and uses Redis Pub/Sub to synchronize state across multiple instances.
+
+**AI Service**: A Python (FastAPI) service integrated with Ollama that leverages LLMs to automatically generate structured quizzes based on user prompts.
 
 **Identity Provider**: Keycloak (backed by PostgreSQL) manages user identity, ensuring secure access to the creator dashboard.
 
@@ -72,6 +75,7 @@ The system is designed as a distributed set of services:
 ### Prerequisites
 - Docker
 - Docker Compose
+- Ollama (Required only if you want to use the AI quiz generation feature)
 
 ### Setup
 
@@ -80,7 +84,13 @@ The system is designed as a distributed set of services:
    cp .env.example .env
    ```
 
-2. Launch the full application:
+2. Configure Ollama (Optional for AI Generation).
+   Ensure Ollama is running locally on your machine and has the required model pulled (e.g., `llama3.1:8b` or your configured model):
+   ```bash
+   ollama run llama3.1:8b
+   ```
+
+3. Launch the full application:
    ```bash
    docker compose up -d
    ```
