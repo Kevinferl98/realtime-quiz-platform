@@ -20,7 +20,7 @@ class PromptManager:
     def load_prompts(self) -> None:
         if not os.path.exists(self.registry_path):
             logger.error(f"Prompt registry directory not found at: {self.registry_path}")
-            raise FileNotFoundError(f"Registry path does not exist.")
+            raise FileNotFoundError("Registry path does not exist.")
 
         for filename in os.listdir(self.registry_path):
             if filename.endswith((".yaml", ".yml")):
