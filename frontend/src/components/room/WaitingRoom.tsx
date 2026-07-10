@@ -24,9 +24,6 @@ export function WaitingRoom({ players, role, onStart }: WaitingRoomProps) {
                         </div>
                         <div className="mq-player-details">
                             <span className="mq-p-name">{p}</span>
-                            {role === "host" && i === 0 && (
-                                <span className="mq-host-tag">HOST</span>
-                            )}
                         </div>
                         <div className="mq-status-dot active" />
                     </div>
