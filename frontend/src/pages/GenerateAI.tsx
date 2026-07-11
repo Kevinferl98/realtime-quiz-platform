@@ -39,9 +39,11 @@ export default function GenerateAI() {
             topic={state.topic}
             numQuestions={state.numQuestions}
             difficulty={state.difficulty}
+            language={state.language}
             onTopicChange={actions.setTopic}
             onNumQuestionsChange={actions.setNumQuestions}
             onDifficultyChange={actions.setDifficulty}
+            onLanguageChange={actions.setLanguage}
             onSubmit={actions.generate}
             onCancel={actions.goHome}
           />
