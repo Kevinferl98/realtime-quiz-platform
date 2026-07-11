@@ -26,6 +26,7 @@ export function useGenerateAI() {
     const [topic, setTopic] = useState<string>("");
     const [numQuestions, setNumQuestions] = useState<number>(5);
     const [difficulty, setDifficulty] = useState<string>("medium");
+    const [language, setLanguage] = useState<string>("English");
 
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export function useGenerateAI() {
         setTopic,
         setNumQuestions,
         setDifficulty,
+        setLanguage,
 
         generate: async() => {
             if (!topic.trim()) {
@@ -51,7 +53,8 @@ export function useGenerateAI() {
                     body: JSON.stringify({
                         topic,
                         num_questions: numQuestions,
-                        difficulty
+                        difficulty,
+                        language
                     }),
                 }, true);
 
@@ -143,6 +146,7 @@ export function useGenerateAI() {
             topic,
             numQuestions,
             difficulty,
+            language,
             loading,
             error,
             previewQuiz,

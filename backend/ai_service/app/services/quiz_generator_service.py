@@ -20,7 +20,7 @@ class QuizGeneratorService:
         prompt_template = self.prompt_manager.get("quiz_generator")
 
         system_content = prompt_template.system_prompt
-        user_content = prompt_template.user_template.format(topic=request.topic, count=request.num_questions, difficulty=request.difficulty)
+        user_content = prompt_template.user_template.format(topic=request.topic, count=request.num_questions, difficulty=request.difficulty, language=request.language)
 
         return [
             {"role": "system", "content": system_content},

@@ -5,9 +5,11 @@ interface Props {
     topic: string;
     numQuestions: number;
     difficulty: string;
+    language: string;
     onTopicChange: (val: string) => void;
     onNumQuestionsChange: (val: number) => void;
     onDifficultyChange: (val: string) => void;
+    onLanguageChange: (val: string) => void;
     onSubmit: () => void;
     onCancel: () => void;
 }
@@ -16,9 +18,11 @@ export function AIConfigForm({
     topic,
     numQuestions,
     difficulty,
+    language,
     onTopicChange,
     onNumQuestionsChange,
     onDifficultyChange,
+    onLanguageChange,
     onSubmit,
     onCancel
 }: Props) {
@@ -58,6 +62,24 @@ export function AIConfigForm({
                         <option value="easy">Easy</option>
                         <option value="medium">Medium</option>
                         <option value="hard">Hard</option>
+                    </select>
+                </section>
+
+                <section className="mq-form-section flex-1">
+                    <label className="mq-label">Language</label>
+                    <select
+                        className="mq-input-select"
+                        value={language}
+                        onChange={(e) => onLanguageChange(e.target.value)}
+                    >
+                        <option value="English">English</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="French">French</option>
+                        <option value="German">German</option>
+                        <option value="Italian">Italian</option>
+                        <option value="Portoguese">Portoguese</option>
+                        <option value="Chinese">Chinese</option>
+                        <option value="Japanese">Japanese</option>
                     </select>
                 </section>
             </div>

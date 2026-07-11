@@ -16,6 +16,10 @@ class QuizGenerateRequest(BaseModel):
         default="medium",
         description="Difficulty level (easy, medium, hard)"
     )
+    language: str = Field(
+        default="English",
+        description="The language of the quiz"
+    )
 
 class QuestionFields(BaseModel):
     question_text: str = Field(..., description="The text of the question")
