@@ -3,18 +3,8 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.api.routes import router
 from app.core.config import config
-from app.exception import (
-    QuizNotFoundError,
-    QuestionNotFoundError,
-    QuizPermissionError,
-    DatabaseError
-)
-from app.exception_handlers import (
-    quiz_not_found_handler,
-    question_not_found_handler,
-    permission_error_handler,
-    db_error_handler
-)
+from app.exception import DomainError
+from app.exception_handlers import domain_error_handler, global_exception_handler
 from app.services.quiz_grpc_server import serve as serve_grpc
 from app.db.mongo_client import mongo_db
 from my_observability import (
@@ -59,7 +49,5 @@ FastAPIInstrumentor.instrument_app(app)
 setup_fastapi_logging(app)
 
 app.include_router(router)
-app.add_exception_handler(QuizNotFoundError, quiz_not_found_handler)
-app.add_exception_handler(QuestionNotFoundError, question_not_found_handler)
-app.add_exception_handler(QuizPermissionError, permission_error_handler)
-app.add_exception_handler(DatabaseError, db_error_handler)
+app.add_exception_handler(DomainError, domain_error_handler)
+app.add_exception_handler(Exception, global_exception_handler)
