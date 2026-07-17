@@ -1,16 +1,8 @@
 import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../api/api";
 import { AuthContext } from "../auth/AuthProvider";
-
-interface Quiz {
-    quizId: string;
-    title: string;
-}
-
-interface QuizzesResponse {
-    quizzes: Quiz[]
-}
+import { Quiz } from "../types/quiz";
+import { quizService } from "../services/quizService";
 
 export function useMyQuizzes() {
     const navigate = useNavigate();
@@ -31,12 +23,7 @@ export function useMyQuizzes() {
             setError(null);
 
             try {
-                const data: QuizzesResponse = await apiFetch(
-                    "/quizzes/mine",
-                    {},
-                    true
-                );
-
+                const data = await quizService.getMyQuizzes();
                 setMyQuizzes(data.quizzes || []);
             } catch (err: any) {
                 setError(err.message || "Error loading your quizzes");
@@ -62,11 +49,7 @@ export function useMyQuizzes() {
                 return;
 
             try {
-                await apiFetch(
-                    `/quizzes/${quizId}`,
-                    { method: "DELETE" },
-                    true
-                );
+                await quizService.deleteQuiz(quizId);
 
                 setMyQuizzes((prev) =>
                     prev.filter((q) => q.quizId !== quizId)

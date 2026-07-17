@@ -1,22 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../api/api";
-
-interface Question {
-  text: string;
-  options: string[];
-  correctIndex: number;
-}
-
-interface QuizResponse {
-  quizId: string;
-}
+import { quizService } from "../services/quizService";
+import { QuizFormQuestion } from "../types/quiz";
 
 export function useCreateQuiz() {
     const navigate = useNavigate();
 
     const [title, setTitle] = useState<string>("");
-    const [questions, setQuestions] = useState<Question[]>([]);
+    const [questions, setQuestions] = useState<QuizFormQuestion[]>([]);
 
     const actions = {
         setTitle,
@@ -68,17 +59,10 @@ export function useCreateQuiz() {
             }));
 
             try {
-                const data: QuizResponse = await apiFetch(
-                    "/quizzes/",
-                    {
-                        method: "POST",
-                        body: JSON.stringify({
-                            title,
-                            questions: formattedQuestions
-                        })
-                    },
-                    true
-                );
+                const data = await quizService.createQuiz({
+                    title,
+                    questions: formattedQuestions
+                })
 
                 console.log("Quiz created with ID:", data.quizId);
                 navigate("/");
@@ -100,7 +84,7 @@ export function useCreateQuiz() {
     };
 }
 
-function isValidQuiz(title: string, questions: Question[]): boolean {
+function isValidQuiz(title: string, questions: QuizFormQuestion[]): boolean {
     if (!title.trim()) return false;
     if (questions.length === 0) return false;
 

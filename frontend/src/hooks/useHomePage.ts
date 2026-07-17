@@ -1,19 +1,8 @@
 import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../api/api";
 import { AuthContext } from "../auth/AuthProvider";
-
-interface Quiz {
-  quizId: string;
-  title: string;
-}
-
-interface QuizzesReponse {
-  quizzes: Quiz[];
-  total: number;
-  page: number;
-  pages: number;
-}
+import { Quiz } from "../types/quiz";
+import { quizService } from "../services/quizService";
 
 export function useHomePage() {
     const navigate = useNavigate();
@@ -33,10 +22,7 @@ export function useHomePage() {
             setError(null);
 
             try {
-                const data: QuizzesReponse = await apiFetch(
-                    `/quizzes/public?page=${page}&limit=${limit}`
-                );
-
+                const data = await quizService.getPublicQuizzes(page, limit);
                 setQuizzes(data.quizzes || []);
                 setPages(data.pages);
             } catch (err: any) {
