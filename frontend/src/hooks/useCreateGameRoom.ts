@@ -1,16 +1,9 @@
 import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../api/api";
 import { AuthContext } from "../auth/AuthProvider";
-
-interface Quiz {
-    quizId: string;
-    title: string;
-}
-
-interface QuizzesResponse {
-    quizzes: Quiz[];
-}
+import { Quiz } from "../types/quiz";
+import { gameService } from "../services/gameService";
+import { quizService } from "../services/quizService";
 
 export function useCreateGameRoom() {
     const navigate = useNavigate();
@@ -20,6 +13,9 @@ export function useCreateGameRoom() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [creatingRoomId, setCreatingRoomId] = useState<string | null>(null);
+    const [page, setPage] = useState<number>(1);
+    const [pages, setPages] = useState<number>(1);
+    const limit = 10;
 
     useEffect(() => {
         if (!authenticated) {
@@ -33,10 +29,9 @@ export function useCreateGameRoom() {
             setError(null);
 
             try {
-                const data: QuizzesResponse = await apiFetch(
-                    "/quizzes/public"
-                );
+                const data = await quizService.getPublicQuizzes(page, limit);
                 setQuizzes(data.quizzes || []);
+                setPages(data.pages);
             } catch(err: any) {
                 setError(err.message || "Error loading quizzes");
             } finally {
@@ -47,22 +42,22 @@ export function useCreateGameRoom() {
         if (authenticated) {
             loadQuizzes();
         }
-    }, [authenticated]);
+    }, [authenticated, page]);
+
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, [page]);
 
     const actions = {
         goHome: () => navigate("/"),
 
         logout: () => keycloak.logout({ redirectUri: window.location.origin }),
 
-        creteRoom: async (quizId: string) => {
+        createRoom: async (quizId: string) => {
             try {
                 setCreatingRoomId(quizId);
 
-                const room = await apiFetch(
-                    `/game/${quizId}/create_room`,
-                    { method: "POST" },
-                    true
-                );
+                const room = await gameService.createRoom(quizId);
 
                 navigate(`/room/${room.room_id}`);
             } catch (err: any) {
@@ -70,7 +65,9 @@ export function useCreateGameRoom() {
             } finally {
                 setCreatingRoomId(null);
             }
-        }
+        },
+
+        setPage
     };
 
     return {
@@ -79,7 +76,9 @@ export function useCreateGameRoom() {
             loading,
             error,
             creatingRoomId,
-            authenticated
+            authenticated,
+            page,
+            pages
         },
         actions
     };

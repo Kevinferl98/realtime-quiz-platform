@@ -1,4 +1,4 @@
-import "../../styles/home/Pagination.css";
+import "../../styles/pagination/Pagination.css";
 
 export function Pagination({ page, pages, onChange }: any) {
     return (

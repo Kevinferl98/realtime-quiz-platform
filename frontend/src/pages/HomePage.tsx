@@ -3,7 +3,7 @@ import { AuthBar } from "../components/home/AuthBar";
 import { JoinRoom } from "../components/home/JoinRoom";
 import { MainActions } from "../components/home/MainActions";
 import { QuizList } from "../components/home/QuizList";
-import { Pagination } from "../components/home/Pagination";
+import { Pagination } from "../components/pagination/Pagination";
 import "../styles/home/HomePage.css";
 
 export default function HomePage() {
