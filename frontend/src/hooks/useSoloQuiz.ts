@@ -1,24 +1,13 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { apiFetch } from "../api/api"
-
-interface Question {
-    id: string;
-    question_text: string;
-    options: string[];
-}
-
-interface Quiz {
-    quizId: string;
-    title: string;
-    questions: Question[];
-}
+import { QuizWithQuestions } from "../types/quiz";
+import { quizService } from "../services/quizService";
 
 export function useSoloQuiz() {
     const { id } = useParams<{ id: string}>();
     const navigate = useNavigate();
 
-    const [quiz, setQuiz] = useState<Quiz | null>(null);
+    const [quiz, setQuiz] = useState<QuizWithQuestions | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -36,9 +25,7 @@ export function useSoloQuiz() {
             setError(null);
 
             try {
-                const data: Quiz = await apiFetch(
-                    `/quizzes/${id}`
-                );
+                const data = await quizService.getQuiz(id);
                 setQuiz(data);
             } catch (err: any) {
                 setError(err.message || "Failed to load quiz");
@@ -61,16 +48,10 @@ export function useSoloQuiz() {
             setSelectedOption(option);
 
             try {
-                const result: { correct: boolean } = await apiFetch(
-                    `/quizzes/${quiz.quizId}/answer`,
-                    {
-                        method: "POST",
-                        body: JSON.stringify({
-                            question_id: currentQuestion.id,
-                            answer: option
-                        })
-                    }
-                );
+                const result = await quizService.checkAnswer(quiz.quizId, {
+                    question_id: currentQuestion.id,
+                    answer: option
+                });
 
                 setIsCorrect(result.correct);
                 setShowResult(true);

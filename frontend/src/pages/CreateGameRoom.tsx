@@ -1,6 +1,7 @@
 import { useCreateGameRoom } from "../hooks/useCreateGameRoom";
 import { TopBar } from "../components/createRoom/TopBar";
 import { QuizSelectionList } from "../components/createRoom/QuizSelectionList";
+import { Pagination } from "../components/pagination/Pagination";
 import "../styles/createRoom/CreateGameRoom.css";
 
 export default function CreateGameRoom() {
@@ -27,9 +28,17 @@ export default function CreateGameRoom() {
                         loading={state.loading}
                         error={state.error}
                         creatingRoomId={state.creatingRoomId}
-                        onCreateRoom={actions.creteRoom}
+                        onCreateRoom={actions.createRoom}
                     />
                 </section>
+
+                <footer className="mq-footer">
+                    <Pagination
+                        page={state.page}
+                        pages={state.pages}
+                        onChange={actions.setPage}
+                    />
+                </footer>
             </main>
         </div>
     );
