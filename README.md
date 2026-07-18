@@ -104,7 +104,6 @@ The application includes an observability stack based on **OpenTelemetry**, **Gr
 
    From Grafana you can inspect service traces, search structured logs, and correlate requests across microservices using `trace_id` and `span_id`.
 
-
 ## Using the Application
 
 Start by creating a new quiz room or joining an existing one using a room code. Once inside, participants are automatically connected through a WebSocket session that keeps the game state synchronized in real time.
