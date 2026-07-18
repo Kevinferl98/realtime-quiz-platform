@@ -1,34 +1,15 @@
 import { useEffect, useRef, useState, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../auth/AuthProvider";
-import { CONFIG } from "../config";
-
-type Role = "host" | "player";
-
-type Question = {
-    text: string;
-    options: string[];
-    duration?: number;
-};
-
-type LeaderboardEntry = {
-    name: string;
-    score: number;
-}
-
-type RoomViewState = 
-    | "ENTER_NAME"
-    | "WAITING"
-    | "QUESTION"
-    | "LEADERBOARD"
-    | "FINISHED";
+import { RoomSocket } from "../websocket/roomSocket";
+import { Role, Question, LeaderboardEntry, RoomViewState } from "../types/room";
 
 export function useRoomLogic() {
     const { room_id } = useParams();
     const navigate = useNavigate();
     const { keycloak, authenticated } = useContext(AuthContext);
-    
-    const wsRef = useRef<WebSocket | null>(null);
+
+    const roomSocketRef = useRef<RoomSocket | null>(null);
     const playerIdRef = useRef<string>("");
 
     const [role, setRole] = useState<Role>("player");
@@ -62,114 +43,84 @@ export function useRoomLogic() {
         return "WAITING";
     };
 
-    const send = (payload: object) => {
-        wsRef.current?.send(JSON.stringify(payload));
-    };
-
     const disconnect = () => {
-        if (wsRef.current) {
-            wsRef.current.close();
-            wsRef.current = null;
+        roomSocketRef.current?.disconnect();
+        roomSocketRef.current = null;
+    }
+
+    const connectRoom = (playerId: string, username?: string) => {
+        if (!room_id) {
+            return;
         }
-    };
 
-    const handleNewQuestion = (q: Question) => {
-        setQuestion(q);
-        setLeaderboard([]);
-        setSelectedAnswer(null);
-        setCorrectAnswer(null);
-
-        const duration = q.duration || 15;
-        setTimer(duration);
-        setTotalTime(duration);
-    };
-
-    const handleLeaderboard = (data: any) => {
-        setQuestion(null);
-        setLeaderboard(data.leaderboard);
-        setIsFinalLeaderboard(!!data.final);
-    };
-
-    const handleError = (data: any) => {
-        alert(data.message);
-
-        if (
-            data.code === "ROOM_NOT_FOUND" ||
-            data.code === "ROOM_ALREADY_STARTED"
-        ) {
-            setRedirect("/");
-        }
-    };
-
-    const handleMessage = (ws: WebSocket, data: any) => {
-        switch (data.type) {
-            case "role":
-                setRole(data.role);
-                playerIdRef.current = data.player_id;
-
-                if (authenticated && data.role !== "host") {
-                    send({
-                        type: "join",
-                        name: keycloak.tokenParsed?.preferred_username
-                    });
-                }
-                break;
-
-            case "player_joined":
-            case "player_left":
-                setPlayers(data.players);
-                break;
-
-            case "question":
-                handleNewQuestion(data.question);
-                break;
-
-            case "timer":
-                setTimer(data.seconds);
-                break;
-
-            case "answer_result":
-                setCorrectAnswer(data.correct_answer);
-                break;
-
-            case "leaderboard":
-                handleLeaderboard(data);
-                break;
-
-            case "error":
-                handleError(data);
-                break;
-        }
-    };
-
-    const connectWebSocket = (playerId: string, username?: string) => {
-        if (!room_id) return;
-
-        const tokenQuery = authenticated && keycloak.token ? `?token=${keycloak.token}` : "";
-        const wsUrl = `${CONFIG.WS_BASE}/rooms/${room_id}${tokenQuery}`;
-        const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
+        const socket = new RoomSocket(room_id, authenticated ? keycloak.token : undefined);
+        roomSocketRef.current = socket;
+        socket.onOpen(() => {
             setConnected(true);
+
             if (username && role !== "host") {
-                ws.send(JSON.stringify({type: "join", name: username}));
+                socket.join(username);
             }
-        };
+        });
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            handleMessage(ws, data);
-        };
-
-        ws.onclose = () => {
+        socket.onClose(() => {
             setConnected(false);
-        };
+        })
+
+        socket.connect({
+            onRole: (role, playerId) => {
+                setRole(role);
+                playerIdRef.current = playerId;
+                
+                if (authenticated && role !== "host") {
+                    socket.join(keycloak.tokenParsed?.preferred_username as string);
+                }
+            },
+
+            onPlayersChanged: (players) => {
+                setPlayers(players);
+            },
+
+            onQuestion: (question) => {
+                setQuestion(question);
+                setLeaderboard([]);
+                setSelectedAnswer(null);
+                setCorrectAnswer(null);
+
+                const duration = question.duration ?? 15;
+                setTimer(duration);
+                setTotalTime(duration);
+            },
+
+            onTimer: (seconds) => {
+                setTimer(seconds);
+            },
+
+            onAnswerResult: (answer) => {
+                setCorrectAnswer(answer);
+            },
+
+            onLeaderboard: (leaderboard, final) => {
+                setQuestion(null);
+                setLeaderboard(leaderboard);
+                setIsFinalLeaderboard(final);
+            },
+
+            onError: (code, message) => {
+                alert(message);
+
+                if (code == "ROOM_NOT_FOUND" || code == "ROOM_ALREADY_STARTED") {
+                    setRedirect("/");
+                }
+            }
+        });
     };
 
     // Timer countdown
     useEffect(() => {
-        if (!question) return;
+        if (!question) {
+            return;
+        }
 
         const interval = setInterval(() => {
             setTimer((t) => {
@@ -186,14 +137,20 @@ export function useRoomLogic() {
 
     // Auth auto join
     useEffect(() => {
-        if (!room_id) return;
+        if (!room_id) {
+            return;
+        }
 
         if (authenticated) {
             const playerId = keycloak.tokenParsed?.sub as string;
             const username = keycloak.tokenParsed?.preferred_username as string;
             playerIdRef.current = playerId;
-            connectWebSocket(playerId, username);
+            connectRoom(playerId, username);
             setNameSubmitted(true);
+        }
+
+        return () => {
+            disconnect();
         }
     }, [authenticated, room_id]);
 
@@ -203,23 +160,27 @@ export function useRoomLogic() {
     }, [redirect, navigate]);
 
     const handleSubmitName = () => {
-        if (!nameInput.trim()) return;
+        if (!nameInput.trim()) {
+            return;
+        }
 
         const uuid = crypto.randomUUID();
         playerIdRef.current = uuid;
-        connectWebSocket(uuid, nameInput.trim());
+        connectRoom(uuid, nameInput.trim());
         setNameSubmitted(true);
     };
 
     const handleStart = () => {
-        send({ type: "start" })
+        roomSocketRef.current?.start();
     };
-    
+
     const handleAnswer = (answer: string) => {
-        if (selectedAnswer) return;
+        if (selectedAnswer) {
+            return;
+        }
 
         setSelectedAnswer(answer);
-        send({ type: "answer", answer })
+        roomSocketRef.current?.answer(answer);
     };
 
     const disconnectAndGoHome = () => {
