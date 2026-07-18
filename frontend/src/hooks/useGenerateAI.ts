@@ -1,24 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../api/api";
-
-interface AIQuestionField {
-    question_text: string;
-    options: string[];
-    correct_answer_index: number;
-}
-
-interface AIResponse {
-    title: string;
-    description?: string;
-    questions: AIQuestionField[];
-}
-
-interface EditableQuestion {
-    text: string;
-    options: string[];
-    correctIndex: number;
-}
+import { GenerateQuizResponse } from "../types/ai";
+import { quizService } from "../services/quizService";
+import { aiService } from "../services/aiService";
 
 export function useGenerateAI() {
     const navigate = useNavigate();
@@ -30,7 +14,7 @@ export function useGenerateAI() {
 
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const [previewQuiz, setPreviewQuiz] = useState<AIResponse | null>(null);
+    const [previewQuiz, setPreviewQuiz] = useState<GenerateQuizResponse | null>(null);
 
     const actions = {
         setTopic,
@@ -48,15 +32,12 @@ export function useGenerateAI() {
             setError(null);
 
             try {
-                const data: AIResponse = await apiFetch("/v1/ai/generate", {
-                    method: "POST",
-                    body: JSON.stringify({
-                        topic,
-                        num_questions: numQuestions,
-                        difficulty,
-                        language
-                    }),
-                }, true);
+                const data = await aiService.generateQuiz({
+                    topic: topic,
+                    num_questions: numQuestions,
+                    difficulty: difficulty,
+                    language: language
+                })
 
                 setPreviewQuiz(data);
             } catch (err: any) {
@@ -124,13 +105,10 @@ export function useGenerateAI() {
             }));
 
             try {
-                await apiFetch("/quizzes/", {
-                    method: "POST",
-                    body: JSON.stringify({
-                        title: previewQuiz.title,
-                        questions: formattedQuestions
-                    }),
-                }, true);
+                await quizService.createQuiz({
+                    title: previewQuiz.title,
+                    questions: formattedQuestions
+                })
 
                 navigate("/");
             } catch (err: any) {
