@@ -97,7 +97,12 @@ The system is designed as a distributed set of services:
 Once running, the web interface will be available at: **http://localhost**
 
 ### Observability Endpoints
+
+The application includes an observability stack based on **OpenTelemetry**, **Grafana Tempo**, and **Grafana Loki** for distributed tracing and centralized logging.
+
 - **Grafana**: **http://localhost:3000**
+
+   From Grafana you can inspect service traces, search structured logs, and correlate requests across microservices using `trace_id` and `span_id`.
 
 ## Using the Application
 
