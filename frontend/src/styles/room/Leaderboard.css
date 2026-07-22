@@ -43,6 +43,10 @@
   box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 
+.mq-crown-icon {
+  color: #f59e0b;
+}
+
 .mq-podium-name {
   font-size: 0.9rem;
   font-weight: 700;

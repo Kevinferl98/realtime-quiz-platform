@@ -1,4 +1,5 @@
 import "../../styles/room/Leaderboard.css";
+import { Crown } from "lucide-react";
 
 interface LeaderboardEntry {
     name: string;
@@ -16,7 +17,7 @@ export function LeaderboardView({ leaderboard, isFinal }: LeaderboardViewProps) 
     return (
         <div className="mq-leaderboard-container">
             <h2 className="mq-leaderboard-header">
-                {isFinal ? "🏆 Final Results" : "📊 Leaderboard"}
+                {isFinal ? "Final Results" : "Leaderboard"}
             </h2>
 
             <div className="mq-podium-section">
@@ -35,7 +36,9 @@ export function LeaderboardView({ leaderboard, isFinal }: LeaderboardViewProps) 
                 {/* 1st Place */}
                 {leaderboard[0] && (
                     <div className="mq-podium-spot first">
-                        <div className="mq-podium-avatar">👑</div>
+                        <div className="mq-podium-avatar">
+                            <Crown size={28} className="mq-crown-icon" />
+                        </div>
                         <div className="mq-podium-name">{leaderboard[0].name}</div>
                         <div className="mq-podium-pillar">
                             <span className="mq-podium-score">{leaderboard[0].score}</span>
