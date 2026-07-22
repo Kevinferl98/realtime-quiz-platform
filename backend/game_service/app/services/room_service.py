@@ -1,9 +1,7 @@
 import random
-from app.exception import QuizNotFoundError
 from app.services.redis_client import RedisClient
 from app.schemas.multiplayer import RoomCreateResponse
 from app.services.quiz_grpc_client import QuizServiceClient
-from fastapi import HTTPException
 from my_observability import get_logger
 
 CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -33,15 +31,7 @@ async def generate_unique_room_id(redis: RedisClient) -> str:
     raise RuntimeError("Unable to generate a unique room_id after multiple attempts")
 
 async def create_room(redis: RedisClient, quiz_id: str, user_id: str, quiz_client: QuizServiceClient) -> RoomCreateResponse:
-    try:
-        quiz_data = await quiz_client.get_quiz_by_id(quiz_id)
-    except QuizNotFoundError:
-        logger.warning(f"Quiz {quiz_id} not found via gRPC")
-        raise HTTPException(status_code=404, detail="Quiz not found")
-    except Exception:
-        logger.error(f"Failed to fetch quiz {quiz_id} due to upstream error")
-        raise HTTPException(status_code=502, detail="Upstream quiz service unavailable")
-
+    quiz_data = await quiz_client.get_quiz_by_id(quiz_id)
     room_id = await generate_unique_room_id(redis)
 
     await redis.save_room_meta(

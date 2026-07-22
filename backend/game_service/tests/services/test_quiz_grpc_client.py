@@ -76,7 +76,7 @@ async def test_get_quiz_by_id_raises_domain_exception_on_grpc_not_found(initiali
     with pytest.raises(QuizNotFoundError) as exc_info:
         await initialized_client.get_quiz_by_id(quiz_id)
 
-    assert exc_info.value.quiz_id == quiz_id
+    assert "The requested quiz does not exist." in exc_info.value.detail
 
 @pytest.mark.asyncio
 async def test_get_quiz_by_id_raises_generic_grpc_errors(initialized_client):

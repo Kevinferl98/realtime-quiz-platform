@@ -71,7 +71,7 @@ class QuizServiceClient:
             }
         except grpc.aio.AioRpcError as e:
             if e.code() == grpc.StatusCode.NOT_FOUND:
-                raise QuizNotFoundError(quiz_id)
+                raise QuizNotFoundError()
             if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
                 logger.error(f"gRPC timeout fetching quiz {quiz_id}")
                 raise
