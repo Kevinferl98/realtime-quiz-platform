@@ -12,6 +12,8 @@ from my_observability import (
     shutdown_telemetry
 )
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from app.exception import DomainError
+from app.exception_handlers import global_exception_handler, domain_error_handler
 
 setup_observability(
     log_level=config.LOG_LEVEL
@@ -50,3 +52,5 @@ setup_fastapi_logging(app)
 
 app.include_router(router)
 app.include_router(router_ws)
+app.add_exception_handler(DomainError, domain_error_handler)
+app.add_exception_handler(Exception, global_exception_handler)

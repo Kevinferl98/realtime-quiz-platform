@@ -5,7 +5,6 @@ from app.schemas.multiplayer import RoomCreateResponse
 from app.services.quiz_grpc_client import QuizServiceClient
 from app.services.redis_client import RedisClient
 from app.services.room_service import create_room
-from fastapi import HTTPException
 
 @pytest.fixture
 def mock_redis():
@@ -99,9 +98,9 @@ async def test_create_room_with_empty_questions(mock_redis, mock_quiz_client):
 async def test_create_room_raises_http_404_when_quiz_not_found(mock_redis, mock_quiz_client):
     quiz_id = "non_existent_quiz"
     user_id = "user_456"
-    mock_quiz_client.get_quiz_by_id.side_effect = QuizNotFoundError(quiz_id)
+    mock_quiz_client.get_quiz_by_id.side_effect = QuizNotFoundError()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(QuizNotFoundError) as exc_info:
         await create_room(
             redis=mock_redis,
             quiz_id=quiz_id,
@@ -110,7 +109,7 @@ async def test_create_room_raises_http_404_when_quiz_not_found(mock_redis, mock_
         )
 
     assert exc_info.value.status_code == 404
-    assert "Quiz not found" in exc_info.value.detail
+    assert "The requested quiz does not exist." in exc_info.value.detail
 
     mock_redis.set_if_not_exists.assert_not_called()
     mock_redis.save_room_meta.assert_not_called()
