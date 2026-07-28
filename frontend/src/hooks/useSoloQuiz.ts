@@ -1,15 +1,14 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { QuizWithQuestions } from "../types/quiz";
-import { quizService } from "../services/quizService";
+import { useState } from "react";
+import { useGetQuiz, useCheckAnswer } from "./queries/useQuizQueries";
 
 export function useSoloQuiz() {
-    const { id } = useParams<{ id: string}>();
+    const { id } = useParams();
     const navigate = useNavigate();
 
-    const [quiz, setQuiz] = useState<QuizWithQuestions | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { data, isLoading, isError, error } = useGetQuiz(id);
+
+    const checkAnswerMutation = useCheckAnswer();
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -17,65 +16,49 @@ export function useSoloQuiz() {
     const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
     const [score, setScore] = useState(0);
 
-    useEffect(() => {
-        const fetchQuiz = async () => {
-            if (!id) return;
-
-            setLoading(true);
-            setError(null);
-
-            try {
-                const data = await quizService.getQuiz(id);
-                setQuiz(data);
-            } catch (err: any) {
-                setError(err.message || "Failed to load quiz");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchQuiz();
-    }, [id]);
-
-    const currentQuestion = quiz?.questions[currentIndex] || null;
+    const currentQuestion = data?.questions[currentIndex] || null;
 
     const actions = {
         goHome: () => navigate("/"),
 
         selectOption: async (option: string) => {
-            if (!quiz || !currentQuestion || showResult) return;
+            if (!data || !currentQuestion || !id || showResult || checkAnswerMutation.isPending) return;
 
             setSelectedOption(option);
 
-            try {
-                const result = await quizService.checkAnswer(quiz.quizId, {
-                    question_id: currentQuestion.id,
-                    answer: option
-                });
+            checkAnswerMutation.mutate(
+                {
+                    quizId: id,
+                    request: {
+                        question_id: currentQuestion.id,
+                        answer: option
+                    }
+                },
+                {
+                    onSuccess: (result) => {
+                        setIsCorrect(result.correct);
+                        setShowResult(true);
 
-                setIsCorrect(result.correct);
-                setShowResult(true);
-
-                if (result.correct) {
-                    setScore((prev) => prev + 1);
+                        if (result.correct) {
+                            setScore((prev) => prev + 1)
+                        }
+                    }
                 }
-            } catch {
-                alert("Error checking anwer");
-            }
+            );
         },
 
         next: () => {
-            if (!quiz) return;
+            if (!data) return;
 
             setSelectedOption(null);
             setShowResult(false);
             setIsCorrect(null);
 
-            if (currentIndex < quiz.questions.length - 1) {
+            if (currentIndex < data.questions.length - 1) {
                 setCurrentIndex((prev) => prev + 1);
             } else {
                 alert(
-                    `Quiz finished! Score: ${score}/${quiz.questions.length}`
+                    `Quiz finished! Score: ${score}/${data.questions.length}`
                 );
                 navigate("/");
             }
@@ -84,9 +67,9 @@ export function useSoloQuiz() {
 
     return {
         state: {
-            quiz,
-            loading,
-            error,
+            quiz: data || null,
+            loading: isLoading,
+            error: isError ? (error as Error).message || "Failed to load quiz" : null,
             currentIndex,
             currentQuestion,
             selectedOption,
