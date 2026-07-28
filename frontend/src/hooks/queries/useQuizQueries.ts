@@ -11,7 +11,7 @@ export function usePublicQuizzes(page: number, limit: number) {
     });
 }
 
-export function useMyQuizzes(enabled = true) {
+export function useMyQuizzeList(enabled = true) {
     return useQuery({
         queryKey: queryKeys.quizzes.mine(),
         queryFn: () => quizService.getMyQuizzes(),
