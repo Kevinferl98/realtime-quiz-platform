@@ -19,12 +19,15 @@ export function useMyQuizzeList(enabled = true) {
     });
 }
 
-export function useCreateQuiz() {
+export function useCreateQuizMutation() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (newQuiz: CreateQuizRequest) => quizService.createQuiz(newQuiz),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: queryKeys.quizzes.mine() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.quizzes.all });
+        },
+        onError: (error: any) => {
+            alert("Error creating quiz: " + (error.message || "Unknown error"));
         }
     });
 }
@@ -34,7 +37,7 @@ export function useDeleteQuiz() {
     return useMutation({
         mutationFn: (quizId: string) => quizService.deleteQuiz(quizId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: queryKeys.quizzes.mine() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.quizzes.all });
         }
     });
 }

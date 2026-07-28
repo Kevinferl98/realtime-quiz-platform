@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { quizService } from "../services/quizService";
 import { QuizFormQuestion } from "../types/quiz";
+import { useCreateQuizMutation } from "./queries/useQuizQueries";
 
 export function useCreateQuiz() {
     const navigate = useNavigate();
 
     const [title, setTitle] = useState<string>("");
     const [questions, setQuestions] = useState<QuizFormQuestion[]>([]);
+
+    const createQuizMutation = useCreateQuizMutation();
 
     const actions = {
         setTitle,
@@ -45,7 +47,7 @@ export function useCreateQuiz() {
 
         goHome: () => navigate("/"),
 
-        submit: async () => {
+        submit: () => {
             if (!isValidQuiz(title, questions)) {
                 alert("Plaese fill in the quiz title and all question fields.");
                 return;
@@ -58,17 +60,18 @@ export function useCreateQuiz() {
                 correct_option: q.options[q.correctIndex]
             }));
 
-            try {
-                const data = await quizService.createQuiz({
+            createQuizMutation.mutate(
+                {
                     title,
                     questions: formattedQuestions
-                })
-
-                console.log("Quiz created with ID:", data.quizId);
-                navigate("/");
-            } catch (error: any) {
-                alert("Error creating quiz: " + error.message);
-            }
+                },
+                {
+                    onSuccess: (data) => {
+                        console.log("Quiz created with ID:", data.quizId);
+                        navigate("/");
+                    }
+                }
+            );
         }
     };
 
