@@ -1,48 +1,27 @@
 import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../auth/AuthProvider";
-import { Quiz } from "../types/quiz";
-import { gameService } from "../services/gameService";
-import { quizService } from "../services/quizService";
+import { usePublicQuizzes } from "./queries/useQuizQueries";
+import { useCreateRoom } from "./queries/useGameQueries";
 
 export function useCreateGameRoom() {
     const navigate = useNavigate();
     const { keycloak, authenticated } = useContext(AuthContext);
 
-    const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [creatingRoomId, setCreatingRoomId] = useState<string | null>(null);
     const [page, setPage] = useState<number>(1);
-    const [pages, setPages] = useState<number>(1);
     const limit = 10;
-
+    
     useEffect(() => {
         if (!authenticated) {
             keycloak.login();
         }
     }, [authenticated, keycloak]);
 
-    useEffect(() => {
-        const loadQuizzes = async () => {
-            setLoading(true);
-            setError(null);
-
-            try {
-                const data = await quizService.getPublicQuizzes(page, limit);
-                setQuizzes(data.quizzes || []);
-                setPages(data.pages);
-            } catch(err: any) {
-                setError(err.message || "Error loading quizzes");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (authenticated) {
-            loadQuizzes();
-        }
-    }, [authenticated, page]);
+    const { data, isLoading, isError, error } = usePublicQuizzes(page, limit, {
+        enabled: authenticated
+    });
+    
+    const createRoomMutation = useCreateRoom();
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -54,17 +33,11 @@ export function useCreateGameRoom() {
         logout: () => keycloak.logout({ redirectUri: window.location.origin }),
 
         createRoom: async (quizId: string) => {
-            try {
-                setCreatingRoomId(quizId);
-
-                const room = await gameService.createRoom(quizId);
-
-                navigate(`/room/${room.room_id}`);
-            } catch (err: any) {
-                alert(err.message || "Error creating room");
-            } finally {
-                setCreatingRoomId(null);
-            }
+            createRoomMutation.mutate(quizId, {
+                onSuccess: (room) => {
+                    navigate(`/room/${room.room_id}`);
+                }
+            });
         },
 
         setPage
@@ -72,13 +45,13 @@ export function useCreateGameRoom() {
 
     return {
         state: {
-            quizzes,
-            loading,
-            error,
-            creatingRoomId,
+            quizzes: data?.quizzes || [],
+            loading: isLoading,
+            error: isError ? (error as Error).message || "Error loading quizzes" : null,
+            creatingRoomId: createRoomMutation.isPending ? createRoomMutation.variables : null,
             authenticated,
             page,
-            pages
+            pages: data?.pages || 1
         },
         actions
     };

@@ -3,11 +3,12 @@ import { quizService } from "../../services/quizService";
 import { queryKeys } from "../../queries/queryKeys";
 import { CheckAnswerRequest, CreateQuizRequest } from "../../types/quiz";
 
-export function usePublicQuizzes(page: number, limit: number) {
+export function usePublicQuizzes(page: number, limit: number, options?: { enabled?: boolean}) {
     return useQuery({
         queryKey: queryKeys.quizzes.public(page, limit),
         queryFn: () => quizService.getPublicQuizzes(page, limit),
-        placeholderData: keepPreviousData
+        placeholderData: keepPreviousData,
+        enabled: options?.enabled ?? true
     });
 }
 
