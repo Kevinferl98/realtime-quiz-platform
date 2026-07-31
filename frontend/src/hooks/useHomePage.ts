@@ -1,39 +1,17 @@
 import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../auth/AuthProvider";
-import { Quiz } from "../types/quiz";
-import { quizService } from "../services/quizService";
+import { usePublicQuizzes } from "../hooks/queries/useQuizQueries";
 
 export function useHomePage() {
     const navigate = useNavigate();
     const { keycloak, authenticated } = useContext(AuthContext);
 
-    const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
     const [roomCode, setRoomCode] = useState<string>("");
     const [page, setPage] = useState<number>(1);
-    const [pages, setPages] = useState<number>(1);
     const limit = 10;
 
-    useEffect(() => {
-        const loadQuizzes = async () => {
-            setLoading(true);
-            setError(null);
-
-            try {
-                const data = await quizService.getPublicQuizzes(page, limit);
-                setQuizzes(data.quizzes || []);
-                setPages(data.pages);
-            } catch (err: any) {
-                setError(err.message || "Error loading quizzes");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        loadQuizzes();
-    }, [page]);
+    const { data, isLoading, isError, error } = usePublicQuizzes(page, limit); 
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -78,12 +56,12 @@ export function useHomePage() {
 
     return {
         state: {
-            quizzes,
-            loading,
-            error,
+            quizzes: data?.quizzes || [],
+            loading: isLoading,
+            error: isError ? (error as Error).message || "Error loading quizzes" : null,
             roomCode,
             page,
-            pages,
+            pages: data?.pages || 1,
             authenticated,
             username: keycloak.tokenParsed?.preferred_username,
         },
