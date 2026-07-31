@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GenerateQuizResponse } from "../types/ai";
-import { quizService } from "../services/quizService";
-import { aiService } from "../services/aiService";
+import { useGenerateAIQuiz } from "./queries/useAIQueries";
+import { useCreateQuizMutation } from "./queries/useQuizQueries";
 
 export function useGenerateAI() {
     const navigate = useNavigate();
@@ -12,9 +12,11 @@ export function useGenerateAI() {
     const [difficulty, setDifficulty] = useState<string>("medium");
     const [language, setLanguage] = useState<string>("English");
 
-    const [loading, setLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
     const [previewQuiz, setPreviewQuiz] = useState<GenerateQuizResponse | null>(null);
+    const [validationError, setValidationError] = useState<string | null>(null);
+
+    const generateMutation = useGenerateAIQuiz();
+    const createQuizMutation = useCreateQuizMutation();
 
     const actions = {
         setTopic,
@@ -24,27 +26,25 @@ export function useGenerateAI() {
 
         generate: async() => {
             if (!topic.trim()) {
-                setError("Please provide a topic or description for your quiz.");
+                setValidationError("Please provide a topic or description for your quiz.");
                 return;
             }
 
-            setLoading(true);
-            setError(null);
+            setValidationError(null);
 
-            try {
-                const data = await aiService.generateQuiz({
-                    topic: topic,
+            generateMutation.mutate(
+                {
+                    topic,
                     num_questions: numQuestions,
-                    difficulty: difficulty,
-                    language: language
-                })
-
-                setPreviewQuiz(data);
-            } catch (err: any) {
-                setError(err.message || "Failed to generate quiz. Please try again.");
-            } finally {
-                setLoading(false);
-            }
+                    difficulty,
+                    language
+                },
+                {
+                    onSuccess: (data) => {
+                        setPreviewQuiz(data);
+                    }
+                }
+            );
         },
 
         updateTitle: (value: string) => {
@@ -80,6 +80,7 @@ export function useGenerateAI() {
 
         cancelPreview: () => {
             setPreviewQuiz(null);
+            generateMutation.reset();
         },
 
         goHome: () => navigate("/"),
@@ -104,20 +105,23 @@ export function useGenerateAI() {
                 correct_option: q.options[q.correct_answer_index]
             }));
 
-            try {
-                await quizService.createQuiz({
+            createQuizMutation.mutate(
+                {
                     title: previewQuiz.title,
                     questions: formattedQuestions
-                })
-
-                navigate("/");
-            } catch (err: any) {
-                alert("Error saving the generated quiz: " + err.message);
-            }
+                },
+                {
+                    onSuccess: () => {
+                        navigate("/");
+                    }
+                }
+            );
         }
     };
 
     const isPreviewValid = !!previewQuiz && previewQuiz.title.trim().length > 0;
+    const loading = generateMutation.isPending || createQuizMutation.isPending;
+    const error = validationError || (generateMutation.isError ? (generateMutation.error as Error).message : null);
 
     return {
         state: {
