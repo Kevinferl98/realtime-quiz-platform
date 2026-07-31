@@ -1,0 +1,24 @@
+name: AI Service CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "backend/ai_service/**"
+      - ".github/workflows/ai-service-ci.yml"
+
+  pull_request:
+    branches: [master]
+    paths:
+      - "backend/ai_service/**"
+      - ".github/workflows/ai-service-ci.yml"
+
+concurrency:
+  group: ai-service-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ./.github/workflows/python-service-ci.yml
+    with:
+      service: ai_service

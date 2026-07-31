@@ -1,0 +1,24 @@
+name: Quiz Service CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "backend/quiz_service/**"
+      - ".github/workflows/quiz-service-ci.yml"
+
+  pull_request:
+    branches: [master]
+    paths:
+      - "backend/quiz_service/**"
+      - ".github/workflows/quiz-service-ci.yml"
+
+concurrency:
+  group: quiz-service-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ./.github/workflows/python-service-ci.yml
+    with:
+      service: quiz_service
