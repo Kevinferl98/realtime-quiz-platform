@@ -1,4 +1,4 @@
-name: Python service CI
+name: Python Service CI
 
 on:
   workflow_call:

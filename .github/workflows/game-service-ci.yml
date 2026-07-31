@@ -1,0 +1,24 @@
+name: Game Service CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "backend/game_service/**"
+      - ".github/workflows/game-service-ci.yml"
+
+  pull_request:
+    branches: [master]
+    paths:
+      - "backend/game_service/**"
+      - ".github/workflows/game-service-ci.yml"
+
+concurrency:
+  group: game-service-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ./.github/workflows/python-service-ci.yml
+    with:
+      service: game_service
