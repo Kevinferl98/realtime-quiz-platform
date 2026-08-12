@@ -1,5 +1,5 @@
 import uuid
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from app.schemas.multiplayer import Player
 from app.domain.room_session import RoomSession
 from my_observability import get_logger
@@ -16,14 +16,18 @@ class RoomWebSocketService:
     async def handle_connection(self, websocket: WebSocket, room_id: str):
         """Accepts a connection, establishes the user session, and boots the main event loop."""
         await websocket.accept()
-
         await self.manager.connect(room_id, websocket)
 
-        session = await self._initialize_session(websocket, room_id)
-
-        await self.manager.register_player_ws(websocket, session.player_id)
-
-        await self._event_loop(websocket, room_id, session)
+        try:
+            session = await self._initialize_session(websocket, room_id)
+            await self.manager.register_player_ws(websocket, session.player_id)
+            await self._event_loop(websocket, room_id, session)
+        except WebSocketDisconnect:
+            logger.info(f"WebSocket disconnected gracefully or timed out for room {room_id}")
+        except Exception as e:
+            logger.error(f"WebSocket closed with error in room {room_id}: {e}")
+        finally:
+            await self.handle_disconnect(websocket, room_id)
 
     async def _initialize_session(self, websocket: WebSocket, room_id: str):
         """Authenticates the incoming socket connection and evaluates room state requirements."""
@@ -80,27 +84,21 @@ class RoomWebSocketService:
 
     async def _event_loop(self, websocket: WebSocket, room_id: str, session: RoomSession):
         """Continuously streams incoming JSON frames and routes them to explicit action handlers."""
-        try:
-            async for data in websocket.iter_json():
-                action = data.get("type")
+        async for data in websocket.iter_json():
+            action = data.get("type")
 
-                if action == "join":
-                    await self._handle_join(websocket, room_id, session, data)
-                elif action == "start":
-                    await self._handle_start(websocket, room_id, session)
-                elif action == "answer":
-                    await self._handle_answer(room_id, session, data)
-                else:
-                    await websocket.send_json({
-                        "type": "error",
-                        "code": "UNKNOWN_ACTION",
-                        "message": "unknown action"
-                    })
-
-        except Exception as e:
-            logger.exception("Error in WebSocket loop", exc_info=e)
-        finally:
-            await self.handle_disconnect(websocket, room_id)
+            if action == "join":
+                await self._handle_join(websocket, room_id, session, data)
+            elif action == "start":
+                await self._handle_start(websocket, room_id, session)
+            elif action == "answer":
+                await self._handle_answer(room_id, session, data)
+            else:
+                await websocket.send_json({
+                    "type": "error",
+                    "code": "UNKNOWN_ACTION",
+                    "message": "unknown action"
+                })
     
     async def handle_disconnect(self, websocket: WebSocket, room_id: str):
         """Cleans up the localized active session inside RoomManager when the socket drops."""
