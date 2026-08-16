@@ -1,4 +1,3 @@
-import asyncio
 from typing import Dict, List
 from fastapi import WebSocket
 
@@ -6,12 +5,10 @@ class ConnectionManager:
     """Manages active WebSocket connections grouped by room IDs."""
     def __init__(self):
         self._room_connections: Dict[str, List[WebSocket]] = {}
-        self._lock = asyncio.Lock()
 
     async def add_connection(self, room_id: str, websocket: WebSocket) -> None:
         """Registers a new WebSocket connection into the specified room."""
-        async with self._lock:
-            self._room_connections.setdefault(room_id, []).append(websocket)
+        self._room_connections.setdefault(room_id, []).append(websocket)
 
     async def remove_connection(self, room_id: str, websocket: WebSocket) -> int:
         """
@@ -19,16 +16,15 @@ class ConnectionManager:
         Returns the count of remaining active connections in the room.
         Returns 0 if the room is now empty and has been deallocated.
         """
-        async with self._lock:
-            connections = self._room_connections.get(room_id, [])
-            if websocket in connections:
-                connections.remove(websocket)
+        connections = self._room_connections.get(room_id, [])
+        if websocket in connections:
+            connections.remove(websocket)
 
-            if not connections:
-                self._room_connections.pop(room_id, None)
-                return 0
+        if not connections:
+            self._room_connections.pop(room_id, None)
+            return 0
 
-            return len(connections)
+        return len(connections)
 
     async def broadcast_to_room(self, room_id: str, message: dict) -> List[WebSocket]:
         """
@@ -36,9 +32,8 @@ class ConnectionManager:
         Returns a list of stale/inactive WebSocket connections that failed
         during transmission and should be scheduled for disconnection.
         """
-        async with self._lock:
-            # Create a shallow copy of the list to iterate outside the lock.
-            connections = list(self._room_connections.get(room_id, []))
+        # Create a shallow copy before awaiting network I/O.
+        connections = list(self._room_connections.get(room_id, []))
 
         if not connections:
             return []
