@@ -21,23 +21,15 @@ class RoomManager:
         self._ws_to_player: Dict[WebSocket, str] = {}
         self._answer_events: Dict[str, asyncio.Event] = {}
 
-        self._global_lock = asyncio.Lock()
         self._subscribe_task: Optional[asyncio.Task] = None
-        self._running = False
 
     async def start(self) -> None:
         """Starts the background distributed Redis Pub/Sub listener service."""
-        async with self._global_lock:
-            if self._running:
-                return
-            self._running = True
-
         self._subscribe_task = asyncio.create_task(self._listen_redis_pubsub())
         logger.info("RoomManager Core Engine started, listening to Pub/Sub")
 
     async def stop(self) -> None:
         """Cancels all active quiz loops and background subscription listeners."""
-        self._running = False
 
         if self._subscribe_task:
             self._subscribe_task.cancel()
@@ -45,13 +37,13 @@ class RoomManager:
                 await self._subscribe_task
 
         # Cancel all running quizzes to ensure clean worker shutdown without memory leaks.
-        async with self._global_lock:
-            for task in self._quiz_tasks.values():
-                task.cancel()
-            for task in self._quiz_tasks.values():
-                with suppress(asyncio.CancelledError):
-                    await task
-            self._quiz_tasks.clear()
+        tasks = list(self._quiz_tasks.values())
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with suppress(asyncio.CancelledError):
+                await task
+        self._quiz_tasks.clear()
 
         logger.info("RoomManager terminated successfully")
 
@@ -93,29 +85,26 @@ class RoomManager:
             logger.warning("Cannot start quiz: lock already acquired by another instance", room_id=room_id)
             return
 
-        async with self._global_lock:
-            if room_id in self._quiz_tasks:
-                await self._redis.release_lock(lock_key)
-                logger.warning("Quiz for this room is already running locally", room_id=room_id)
-                return
+        if room_id in self._quiz_tasks:
+            await self._redis.release_lock(lock_key)
+            logger.warning("Quiz for this room is already running locally", room_id=room_id)
+            return
 
-            engine = QuizEngine(room_id, lock_key, self._redis, self._answer_events)
-            task = asyncio.create_task(self._wrapped_quiz_runner(room_id, engine))
-            self._quiz_tasks[room_id] = task
+        engine = QuizEngine(room_id, lock_key, self._redis, self._answer_events)
+        task = asyncio.create_task(self._wrapped_quiz_runner(room_id, engine))
+        self._quiz_tasks[room_id] = task
 
     async def _wrapped_quiz_runner(self, room_id: str, engine: QuizEngine) -> None:
         """Safely executes the quiz lifecycle and guarantees lock release on termination."""
         try:
             await engine.run_lifecycle()
         finally:
-            async with self._global_lock:
-                self._quiz_tasks.pop(room_id, None)
+            self._quiz_tasks.pop(room_id, None)
             await self._redis.release_lock(engine.lock_key)
 
     async def _cleanup_room_resources(self, room_id: str) -> None:
         """Forcefully halts and unregisters game loops linked to a dead room ID."""
-        async with self._global_lock:
-            task = self._quiz_tasks.pop(room_id, None)
+        task = self._quiz_tasks.pop(room_id, None)
         if task:
             task.cancel()
             with suppress(asyncio.CancelledError):

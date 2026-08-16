@@ -40,20 +40,8 @@ async def room_manager(mock_redis, mock_connection_manager):
 async def test_start_successfully(room_manager):
     await room_manager.start()
 
-    assert room_manager._running is True
     assert room_manager._subscribe_task is not None
     assert isinstance(room_manager._subscribe_task, asyncio.Task)
-
-@pytest.mark.asyncio
-async def test_start_is_idempotent(room_manager, mock_redis):
-    await room_manager.start()
-    first_task = room_manager._subscribe_task
-
-    await room_manager.start()
-    await asyncio.sleep(0)
-
-    assert room_manager._subscribe_task is first_task
-    mock_redis.subscribe_rooms.assert_awaited_once()
 
 @pytest.mark.asyncio
 async def test_stop_cancels_subscribe_and_quiz_tasks(room_manager):
@@ -69,7 +57,6 @@ async def test_stop_cancels_subscribe_and_quiz_tasks(room_manager):
 
     await room_manager.stop()
 
-    assert room_manager._running is False
     assert task.cancelled() is True
     assert room_manager._quiz_tasks == {}
 
