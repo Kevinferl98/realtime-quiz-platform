@@ -23,23 +23,21 @@ class QuizEngine:
         """Executes the complete quiz loop from question progression to the final leaderboard."""
         logger.info("Quiz lifecycle started", room_id=self.room_id)
         try:
-            room_meta = await self._redis.get_room_meta(self.room_id)
-            if not room_meta:
-                logger.warning("Room metadata not found on quiz start", room_id=self.room_id)
-                return
-
             questions = await self._redis.get_all_questions(self.room_id)
             if not questions:
                 logger.warning("No questions found for room", room_id=self.room_id)
                 return
 
             # Initialize room state as started before entering the question loop.
-            await self._update_room_index(room_meta, index=0, started=True)
+            await self._redis.update_room_status(
+                self.room_id,
+                status="STARTED",
+            )
 
             for idx, question in enumerate(questions):
                 is_last = idx == len(questions) - 1
 
-                await self._update_room_index(room_meta, index=idx, started=True)
+                await self._redis.update_room_progress(self.room_id, index=idx)
 
                 await self._redis.publish_room_message(
                     self.room_id,
@@ -60,23 +58,24 @@ class QuizEngine:
                 if not is_last:
                     await asyncio.sleep(LEADERBOARD_DURATION)
 
+            await self._redis.update_room_status(self.room_id, status="FINISHED")
+
         except asyncio.CancelledError:
             logger.info("Quiz execution explicitly cancelled", room_id=self.room_id)
+            with suppress(Exception):
+                await self._redis.update_room_status(
+                    self.room_id,
+                    status="CANCELLED",
+                )
             raise
         except Exception as e:
             logger.exception("Critical crash in QuizEngine execution loop", room_id=self.room_id, exception=e)
-        finally:
-            await self._reset_room_state(room_meta)
-
-    async def _update_room_index(self, room_meta: dict, index: int, started: bool) -> None:
-        """Updates the current room progress and state in Redis metadata."""
-        await self._redis.save_room_meta(
-            self.room_id,
-            owner_id=room_meta["owner_id"],
-            quiz_id=room_meta["quiz_id"],
-            started=started,
-            current_question_index=index
-        )
+            with suppress(Exception):
+                await self._redis.update_room_status(
+                    self.room_id,
+                    status="ERROR",
+                )
+            raise
 
     async def _wait_for_answers_or_timeout(self, question_index: int) -> None:
         """Blocks until the localized asyncio.Event triggers early or the max duration is reached."""
@@ -143,9 +142,3 @@ class QuizEngine:
                 "show_for": LEADERBOARD_DURATION,
             },
         )
-
-    async def _reset_room_state(self, room_meta: Optional[dict]) -> None:
-        """Safely resets the room metadata index and status when the quiz stops or crashes."""
-        if room_meta:
-            with suppress(Exception):
-                await self._update_room_index(room_meta, index=0, started=False)

@@ -45,42 +45,51 @@ class RedisClient:
 
         return bool(result)
 
-    async def save_room_meta(self, room_id: str, owner_id: str, quiz_id: str, 
-                             started: bool = False, current_question_index: int = 0, ttl_seconds: int = 3600):
-        await self.redis.hset(f"room:{room_id}", mapping={
-            "room_id": room_id,
-            "owner_id": owner_id,
-            "quiz_id": quiz_id,
-            "started": int(started),
-            "current_question_index": current_question_index
-        })
-        await self.redis.expire(f"room:{room_id}", ttl_seconds)
+    async def update_room_progress(
+            self,
+            room_id: str,
+            index: int,
+            status: str | None = None
+    ) -> None:
+        room_key = f"room:{room_id}"
+        mapping = {
+            "current_question_index": index
+        }
+
+        if status:
+            mapping["started"] = status
+
+        await self.redis.hset(
+            room_key,
+            mapping=mapping
+        )
+
+    async def update_room_status(
+            self,
+            room_id: str,
+            status: str
+    ) -> None:
+        room_key = f"room:{room_id}"
+        await self.redis.hset(
+            room_key,
+            mapping={
+                "status": status
+            }
+        )
+
+    async def room_exists(self, room_id: str) -> bool:
+        return bool(await self.redis.exists(f"room:{room_id}"))
 
     async def get_room_meta(self, room_id: str):
         data = await self.redis.hgetall(f"room:{room_id}")
         if not data:
             return None
-        data["started"] = bool(int(data.get("started", 0)))
+
         data["current_question_index"] = int(data.get("current_question_index", 0))
         return data
     
     async def delete_room_meta(self, room_id: str):
         await self.redis.delete(f"room:{room_id}")
-
-    async def save_questions(self, room_id: str, questions: list[dict], ttl_seconds: int = 3600):
-        await self.redis.set(f"room:{room_id}:questions", json.dumps(questions), ex=ttl_seconds)
-    
-    async def get_question(self, room_id: str, index: int):
-        data = await self.redis.get(f"room:{room_id}:questions")
-        if not data:
-            return None
-        
-        qlist = json.loads(data)
-        
-        if index < 0 or index >= len(qlist):
-            return None
-        
-        return qlist[index]
     
     async def get_all_questions(self, room_id: str) -> list[dict] | None:
         data = await self.redis.get(f"room:{room_id}:questions")
@@ -88,9 +97,6 @@ class RedisClient:
             return None
         
         return json.loads(data)
-
-    async def delete_questions(self, room_id: str):
-        await self.redis.delete(f"room:{room_id}:questions")
 
     async def add_player(self, room_id: str, player: Player, ttl_seconds: int = 3600):
         await self.redis.sadd(f"room:{room_id}:players", player.player_id)

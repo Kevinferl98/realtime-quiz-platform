@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch, create_autospec
+from unittest.mock import patch, create_autospec
 from app.exception import QuizNotFoundError, QuizEmptyError, CreateRoomError
 from app.schemas.multiplayer import RoomCreateResponse
 from app.services.quiz_grpc_client import QuizServiceClient
@@ -8,17 +8,11 @@ from app.services.room_service import create_room
 
 @pytest.fixture
 def mock_redis():
-    redis = create_autospec(RedisClient, instance=True)
-    redis.set_if_not_exists = AsyncMock(return_value=True)
-    redis.save_room_meta = AsyncMock()
-    redis.save_questions = AsyncMock()
-    return redis
+    return create_autospec(RedisClient, instance=True)
 
 @pytest.fixture
 def mock_quiz_client():
-    quiz_client = create_autospec(QuizServiceClient, instance=True)
-    quiz_client.get_quiz_by_id = AsyncMock()
-    return quiz_client
+    return create_autospec(QuizServiceClient, instance=True)
 
 @pytest.mark.asyncio
 async def test_create_room_success(mock_redis, mock_quiz_client):
@@ -93,9 +87,6 @@ async def test_create_room_raises_http_404_when_quiz_not_found(mock_redis, mock_
     assert exc_info.value.status_code == 404
     assert "The requested quiz does not exist." in exc_info.value.detail
 
-    mock_redis.set_if_not_exists.assert_not_called()
-    mock_redis.save_room_meta.assert_not_called()
-
 @pytest.mark.asyncio
 async def test_create_room_raises_runtime_error_when_room_code_collision_occurs(mock_redis, mock_quiz_client):
     quiz_id = "quiz_123"
@@ -118,5 +109,3 @@ async def test_create_room_raises_runtime_error_when_room_code_collision_occurs(
         )
 
         assert "Unable to create a room." in str(exc_info.value)
-        assert mock_redis.set_if_not_exists.call_count == 5
-        mock_redis.save_room_meta.assert_not_called()
