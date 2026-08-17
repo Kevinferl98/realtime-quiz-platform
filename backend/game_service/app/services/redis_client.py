@@ -5,13 +5,45 @@ import time
 from app.schemas.multiplayer import Player
 from app.core.config import config
 from my_observability import get_logger
+from pathlib import Path
 
 logger = get_logger(__name__)
+
+SCRIPTS_DIR = Path(__file__).parent / "redis_scripts"
 
 class RedisClient:
     def __init__(self):
         self.redis = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
         self._locks: dict[str, str] = {}
+
+        lua_path = SCRIPTS_DIR / "create_room.lua"
+        script_content = lua_path.read_text(encoding="utf-8")
+        self._create_room_script = self.redis.register_script(script_content)
+
+    async def create_room(
+            self,
+            room_id: str,
+            owner_id: str,
+            quiz_id: str,
+            questions: list[dict],
+            ttl_seconds: int = 3600
+    ) -> bool:
+        room_key = f"room:{room_id}"
+        questions_key = f"{room_key}:questions"
+        questions_json = json.dumps(questions)
+
+        result = await self._create_room_script(
+            keys=[room_key, questions_key],
+            args=[
+                room_id,
+                owner_id,
+                quiz_id,
+                questions_json,
+                ttl_seconds
+            ]
+        )
+
+        return bool(result)
 
     async def save_room_meta(self, room_id: str, owner_id: str, quiz_id: str, 
                              started: bool = False, current_question_index: int = 0, ttl_seconds: int = 3600):
