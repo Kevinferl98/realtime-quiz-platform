@@ -214,8 +214,5 @@ class RedisClient:
             return None
         return float(value)
 
-    async def set_if_not_exists(self, key: str, value: str, ttl: int) -> bool:
-        return await self.redis.set(key, value, ex=ttl, nx=True)
-
     async def count_answers(self, room_id: str, question_index: int) -> int:
         return await self.redis.hlen(f"room:{room_id}:answers:{question_index}")
