@@ -367,4 +367,8 @@ async def test_get_leaderboard(redis_client, redis_pipeline):
 
     redis_pipeline.execute.assert_awaited_once_with()
 
-    assert len(result) == 3
+    assert result == [
+        {"player_id": "p1", "name": "John", "score": 100},
+        {"player_id": "p2", "name": "Jane", "score": 75},
+        {"player_id": "p3", "name": "James", "score": 50},
+    ]
