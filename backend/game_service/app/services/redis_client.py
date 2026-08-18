@@ -5,50 +5,85 @@ import time
 from app.schemas.multiplayer import Player
 from app.core.config import config
 from my_observability import get_logger
+from pathlib import Path
 
 logger = get_logger(__name__)
+
+SCRIPTS_DIR = Path(__file__).parent / "redis_scripts"
 
 class RedisClient:
     def __init__(self):
         self.redis = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
         self._locks: dict[str, str] = {}
 
-    async def save_room_meta(self, room_id: str, owner_id: str, quiz_id: str, 
-                             started: bool = False, current_question_index: int = 0, ttl_seconds: int = 3600):
-        await self.redis.hset(f"room:{room_id}", mapping={
-            "room_id": room_id,
-            "owner_id": owner_id,
-            "quiz_id": quiz_id,
-            "started": int(started),
-            "current_question_index": current_question_index
-        })
-        await self.redis.expire(f"room:{room_id}", ttl_seconds)
+        lua_path = SCRIPTS_DIR / "create_room.lua"
+        script_content = lua_path.read_text(encoding="utf-8")
+        self._create_room_script = self.redis.register_script(script_content)
+
+    async def create_room(
+            self,
+            room_id: str,
+            owner_id: str,
+            quiz_id: str,
+            questions: list[dict],
+            ttl_seconds: int = 3600
+    ) -> bool:
+        room_key = f"room:{room_id}"
+        questions_key = f"{room_key}:questions"
+        questions_json = json.dumps(questions)
+
+        result = await self._create_room_script(
+            keys=[room_key, questions_key],
+            args=[
+                room_id,
+                owner_id,
+                quiz_id,
+                questions_json,
+                ttl_seconds
+            ]
+        )
+
+        return bool(result)
+
+    async def update_room_progress(
+            self,
+            room_id: str,
+            index: int,
+            status: str | None = None
+    ) -> None:
+        room_key = f"room:{room_id}"
+        mapping = {
+            "current_question_index": index
+        }
+
+        if status:
+            mapping["started"] = status
+
+        await self.redis.hset(
+            room_key,
+            mapping=mapping
+        )
+
+    async def update_room_status(
+            self,
+            room_id: str,
+            status: str
+    ) -> None:
+        room_key = f"room:{room_id}"
+        await self.redis.hset(
+            room_key,
+            mapping={
+                "status": status
+            }
+        )
 
     async def get_room_meta(self, room_id: str):
         data = await self.redis.hgetall(f"room:{room_id}")
         if not data:
             return None
-        data["started"] = bool(int(data.get("started", 0)))
+
         data["current_question_index"] = int(data.get("current_question_index", 0))
         return data
-    
-    async def delete_room_meta(self, room_id: str):
-        await self.redis.delete(f"room:{room_id}")
-
-    async def save_questions(self, room_id: str, questions: list[dict], ttl_seconds: int = 3600):
-        await self.redis.set(f"room:{room_id}:questions", json.dumps(questions), ex=ttl_seconds)
-    
-    async def get_question(self, room_id: str, index: int):
-        data = await self.redis.get(f"room:{room_id}:questions")
-        if not data:
-            return None
-        
-        qlist = json.loads(data)
-        
-        if index < 0 or index >= len(qlist):
-            return None
-        
-        return qlist[index]
     
     async def get_all_questions(self, room_id: str) -> list[dict] | None:
         data = await self.redis.get(f"room:{room_id}:questions")
@@ -56,9 +91,6 @@ class RedisClient:
             return None
         
         return json.loads(data)
-
-    async def delete_questions(self, room_id: str):
-        await self.redis.delete(f"room:{room_id}:questions")
 
     async def add_player(self, room_id: str, player: Player, ttl_seconds: int = 3600):
         await self.redis.sadd(f"room:{room_id}:players", player.player_id)
@@ -175,9 +207,6 @@ class RedisClient:
         if value is None:
             return None
         return float(value)
-
-    async def set_if_not_exists(self, key: str, value: str, ttl: int) -> bool:
-        return await self.redis.set(key, value, ex=ttl, nx=True)
 
     async def count_answers(self, room_id: str, question_index: int) -> int:
         return await self.redis.hlen(f"room:{room_id}:answers:{question_index}")

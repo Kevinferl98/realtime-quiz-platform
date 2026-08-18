@@ -6,31 +6,11 @@ from app.services.redis_client import RedisClient
 
 @pytest.fixture
 def mock_redis():
-    redis = create_autospec(RedisClient, instance=True)
-    redis.get_room_meta = AsyncMock()
-    redis.get_all_questions = AsyncMock()
-    redis.publish_room_message = AsyncMock()
-    redis.set_question_start = AsyncMock()
-    redis.get_question_start = AsyncMock()
-    redis.get_answers = AsyncMock()
-    redis.increment_score = AsyncMock()
-    redis.delete_answers = AsyncMock()
-    redis.get_players = AsyncMock()
-    redis.save_room_meta = AsyncMock()
-    return redis
+    return create_autospec(RedisClient, instance=True)
 
 @pytest.fixture
 def events_map():
     return {}
-
-@pytest.fixture
-def sample_room_meta():
-    return {
-        "owner_id": "host_user",
-        "quiz_id": "quiz_abc",
-        "started": False,
-        "current_question_index": 0
-    }
 
 @pytest.fixture
 def sample_question():
@@ -49,18 +29,7 @@ def engine(mock_redis, events_map):
     )
 
 @pytest.mark.asyncio
-async def test_lifecycle_aborts_if_no_room_metadata(engine, mock_redis):
-    mock_redis.get_room_meta.return_value = None
-
-    await engine.run_lifecycle()
-
-    mock_redis.get_room_meta.assert_called_with("room_123")
-    mock_redis.get_all_questions.assert_not_called()
-    mock_redis.save_room_meta.assert_not_called()
-
-@pytest.mark.asyncio
-async def test_lifecycle_aborts_if_no_questions_found(engine, mock_redis, sample_room_meta):
-    mock_redis.get_room_meta.return_value = sample_room_meta
+async def test_lifecycle_aborts_if_no_questions_found(engine, mock_redis):
     mock_redis.get_all_questions.return_value = None
 
     await engine.run_lifecycle()
@@ -72,10 +41,8 @@ async def test_lifecycle_aborts_if_no_questions_found(engine, mock_redis, sample
 async def test_complete_successful_lifecycle(
         engine,
         mock_redis,
-        sample_room_meta,
         sample_question
 ):
-    mock_redis.get_room_meta.return_value = sample_room_meta
     mock_redis.get_all_questions.return_value = sample_question
     mock_redis.get_answers.return_value = {}
     mock_redis.get_players.return_value = []
@@ -87,20 +54,13 @@ async def test_complete_successful_lifecycle(
         assert mock_wait.call_count == len(sample_question)
         assert mock_sleep.call_count > 0
 
-    assert mock_redis.save_room_meta.call_count == 4
+    assert mock_redis.update_room_status.call_count == 2
+    assert mock_redis.update_room_progress.call_count == 2
 
     for idx, q in enumerate(sample_question):
         mock_redis.publish_room_message.assert_any_call(
             engine.room_id, {"type": "question", "question": q, "index": idx}
         )
-
-    mock_redis.save_room_meta.assert_called_with(
-        engine.room_id,
-        owner_id=sample_room_meta["owner_id"],
-        quiz_id=sample_room_meta["quiz_id"],
-        started=False,
-        current_question_index=0
-    )
 
 @pytest.mark.asyncio
 async def test_process_answers_with_linear_score_decay(engine, mock_redis):
@@ -135,18 +95,11 @@ async def test_wait_for_answers_exits_early_on_event_signal(engine, events_map):
     assert event_key not in events_map
 
 @pytest.mark.asyncio
-async def test_lifecycle_exception_guarantees_state_reset(engine, mock_redis, sample_room_meta):
-    mock_redis.get_room_meta.return_value = sample_room_meta
-
+async def test_lifecycle_exception_sets_room_status_to_error(engine, mock_redis):
     mock_redis.get_all_questions.side_effect = RuntimeError()
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
-        await engine.run_lifecycle()
+        with pytest.raises(RuntimeError):
+            await engine.run_lifecycle()
 
-    mock_redis.save_room_meta.assert_called_once_with(
-        engine.room_id,
-        owner_id=sample_room_meta["owner_id"],
-        quiz_id=sample_room_meta["quiz_id"],
-        started=False,
-        current_question_index=0
-    )
+            mock_redis.update_room_status.assert_called_with(engine.room_id, "ERROR")

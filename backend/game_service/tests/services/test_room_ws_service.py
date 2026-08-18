@@ -14,7 +14,10 @@ def mock_manager():
 @pytest.fixture
 def mock_redis():
     redis = MagicMock()
-    redis.get_room_meta = AsyncMock(return_value={"owner_id": "host-id"})
+    redis.get_room_meta = AsyncMock(return_value={
+        "owner_id": "host-id",
+        "status": "CREATED"
+    })
     redis.add_player = AsyncMock()
     redis.get_players = AsyncMock(return_value=[{"name": "John"}])
     redis.publish_room_message = AsyncMock()

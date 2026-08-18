@@ -13,3 +13,19 @@ class QuizNotFoundError(DomainError):
             title="Quiz not found",
             detail=detail
         )
+
+class QuizEmptyError(DomainError):
+    def __init__(self, detail: str = "The requested quiz has no questions."):
+        super().__init__(
+            status_code=500,
+            title="Quiz empty",
+            detail=detail
+        )
+
+class CreateRoomError(DomainError):
+    def __init__(self, detail: str = "Unable to create a room."):
+        super().__init__(
+            status_code=500,
+            title="Room creation error",
+            detail=detail
+        )

@@ -22,46 +22,63 @@ def redis_client():
     client.redis.publish = AsyncMock()
     client.redis.eval = AsyncMock(return_value=1)
     client.redis.pubsub = MagicMock()
+    client._create_room_script = AsyncMock(return_value=1)
     return client
 
 @pytest.mark.asyncio
-async def test_save_and_get_room_meta(redis_client):
+async def test_create_room(redis_client):
+    questions = [
+        {
+            "id": "q1",
+            "text": "Text",
+            "correct_option": "B",
+        },
+    ]
+
+    result = await redis_client.create_room(
+        room_id="123",
+        owner_id="owner",
+        quiz_id="quiz1",
+        questions=questions,
+        ttl_seconds=50,
+    )
+
+    assert result is True
+
+    redis_client._create_room_script.assert_awaited_once()
+
+    call = redis_client._create_room_script.await_args
+
+    assert call.kwargs["keys"] == [
+        "room:123",
+        "room:123:questions",
+    ]
+
+    assert call.kwargs["args"][0] == "123"
+    assert call.kwargs["args"][1] == "owner"
+    assert call.kwargs["args"][2] == "quiz1"
+    assert json.loads(call.kwargs["args"][3]) == questions
+    assert call.kwargs["args"][4] == 50
+
+@pytest.mark.asyncio
+async def test_get_room_meta(redis_client):
     redis_client.redis.hgetall.return_value = {
         "room_id": "123",
         "owner_id": "owner",
         "quiz_id": "quiz1",
-        "started": "1",
-        "current_question_index": "2"
+        "status": "STARTED",
+        "current_question_index": "2",
     }
 
-    await redis_client.save_room_meta("123", "owner", "quiz1", True, 2, ttl_seconds=50)
-    redis_client.redis.hset.assert_called_once()
-    redis_client.redis.expire.assert_called_once()
-
     result = await redis_client.get_room_meta("123")
-    assert result["started"] is True
+
+    redis_client.redis.hgetall.assert_called_once_with("room:123")
+
+    assert result["room_id"] == "123"
+    assert result["owner_id"] == "owner"
+    assert result["quiz_id"] == "quiz1"
+    assert result["status"] == "STARTED"
     assert result["current_question_index"] == 2
-
-@pytest.mark.asyncio
-async def test_delete_room_meta(redis_client):
-    await redis_client.delete_room_meta("123")
-    redis_client.redis.delete.assert_called_once_with("room:123")
-
-@pytest.mark.asyncio
-async def test_questions_flow(redis_client):
-    questions = [{"q": "A"}, {"q": "B"}]
-    await redis_client.save_questions("123", questions, ttl_seconds=100)
-    redis_client.redis.set.assert_called_once()
-
-    redis_client.redis.get.return_value = '[{"q":"A"},{"q":"B"}]'
-    q = await redis_client.get_question("123", 0)
-    assert q == {"q": "A"}
-
-    q_all = await redis_client.get_all_questions("123")
-    assert q_all == [{"q":"A"},{"q":"B"}]
-
-    await redis_client.delete_questions("123")
-    redis_client.redis.delete.assert_called_with("room:123:questions")
 
 @pytest.mark.asyncio
 async def test_player_management(redis_client):

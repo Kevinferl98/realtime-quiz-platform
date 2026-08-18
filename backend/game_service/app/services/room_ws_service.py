@@ -47,7 +47,7 @@ class RoomWebSocketService:
             raise Exception("Room not found")
 
         # Prevent late-joins to keep quiz state and scoring synchronization coherent.
-        if room_meta.get("started"):
+        if room_meta.get("status") != "CREATED":
             await websocket.send_json({
                 "type": "error",
                 "code": "ROOM_ALREADY_STARTED",
