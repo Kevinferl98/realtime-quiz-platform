@@ -1,7 +1,7 @@
 import asyncio
 import time
 from contextlib import suppress
-from typing import Dict, Optional
+from typing import Dict
 from app.services.redis_client import RedisClient
 from my_observability import get_logger
 
