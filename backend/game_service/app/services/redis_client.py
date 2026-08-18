@@ -77,9 +77,6 @@ class RedisClient:
             }
         )
 
-    async def room_exists(self, room_id: str) -> bool:
-        return bool(await self.redis.exists(f"room:{room_id}"))
-
     async def get_room_meta(self, room_id: str):
         data = await self.redis.hgetall(f"room:{room_id}")
         if not data:
@@ -87,9 +84,6 @@ class RedisClient:
 
         data["current_question_index"] = int(data.get("current_question_index", 0))
         return data
-    
-    async def delete_room_meta(self, room_id: str):
-        await self.redis.delete(f"room:{room_id}")
     
     async def get_all_questions(self, room_id: str) -> list[dict] | None:
         data = await self.redis.get(f"room:{room_id}:questions")

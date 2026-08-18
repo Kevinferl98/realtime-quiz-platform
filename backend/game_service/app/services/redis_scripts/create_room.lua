@@ -16,7 +16,7 @@ redis.call('HSET', KEYS[1],
     'owner_id', ARGV[2],
     'quiz_id', ARGV[3],
     'status', 'CREATED',
-    'current_question_index', '0',
+    'current_question_index', '0'
 )
 
 redis.call('SET', KEYS[2], ARGV[4])

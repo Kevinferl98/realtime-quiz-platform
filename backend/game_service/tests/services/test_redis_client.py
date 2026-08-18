@@ -81,11 +81,6 @@ async def test_get_room_meta(redis_client):
     assert result["current_question_index"] == 2
 
 @pytest.mark.asyncio
-async def test_delete_room_meta(redis_client):
-    await redis_client.delete_room_meta("123")
-    redis_client.redis.delete.assert_called_once_with("room:123")
-
-@pytest.mark.asyncio
 async def test_player_management(redis_client):
     player = Player(player_id="p1", name="John", score=0)
 
