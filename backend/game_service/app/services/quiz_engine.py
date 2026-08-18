@@ -125,12 +125,14 @@ class QuizEngine:
 
     async def _publish_leaderboard(self, final: bool = False) -> None:
         """Fetches current scores and publishes the top 5 players to the room channel."""
-        players = await self._redis.get_players(self.room_id)
-        players_sorted = sorted(players, key=lambda p: p["score"], reverse=True)
+        leaderboard = await self._redis.get_leaderboard(self.room_id, 5)
 
         leaderboard = [
-            {"name": p["name"], "score": p["score"]}
-            for p in players_sorted[:5]
+            {
+                "name": player["name"],
+                "score": player["score"],
+            }
+            for player in leaderboard
         ]
 
         await self._redis.publish_room_message(

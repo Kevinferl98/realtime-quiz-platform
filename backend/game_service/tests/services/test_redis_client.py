@@ -1,6 +1,6 @@
 import pytest
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, call
 from app.services.redis_client import RedisClient
 from app.schemas.multiplayer import Player
 
@@ -8,22 +8,39 @@ from app.schemas.multiplayer import Player
 def redis_client():
     client = RedisClient()
     client.redis = MagicMock()
-    client.redis.hset = AsyncMock()
-    client.redis.hgetall = AsyncMock()
-    client.redis.expire = AsyncMock()
-    client.redis.set = AsyncMock()
-    client.redis.get = AsyncMock()
-    client.redis.delete = AsyncMock()
-    client.redis.sadd = AsyncMock()
-    client.redis.srem = AsyncMock()
-    client.redis.smembers = AsyncMock()
-    client.redis.hincrby = AsyncMock()
-    client.redis.incr = AsyncMock()
-    client.redis.publish = AsyncMock()
-    client.redis.eval = AsyncMock(return_value=1)
-    client.redis.pubsub = MagicMock()
+
+    async_methods = (
+        "hset",
+        "hgetall",
+        "set",
+        "get",
+        "smembers",
+        "zincrby",
+        "zrevrange",
+        "publish",
+        "eval"
+    )
+
+    for method in async_methods:
+        setattr(client.redis, method, AsyncMock())
+
+    client.redis.eval.return_value = 1
     client._create_room_script = AsyncMock(return_value=1)
+
     return client
+
+@pytest.fixture
+def redis_pipeline(redis_client):
+    pipeline = MagicMock()
+    pipe = MagicMock()
+
+    pipe.execute = AsyncMock()
+    pipeline.__aenter__ = AsyncMock(return_value=pipe)
+    pipeline.__aexit__ = AsyncMock(return_value=None)
+
+    redis_client.redis.pipeline.return_value = pipeline
+
+    return pipe
 
 @pytest.mark.asyncio
 async def test_create_room(redis_client):
@@ -81,28 +98,104 @@ async def test_get_room_meta(redis_client):
     assert result["current_question_index"] == 2
 
 @pytest.mark.asyncio
-async def test_player_management(redis_client):
-    player = Player(player_id="p1", name="John", score=0)
+async def test_add_player(redis_client, redis_pipeline):
+    player = Player(player_id="p1", name="John")
 
-    await redis_client.add_player("123", player, ttl_seconds=60)
-    redis_client.redis.sadd.assert_called_once()
-    redis_client.redis.hset.assert_called_once()
-    redis_client.redis.expire.assert_called_once()
+    await redis_client.add_player(
+        room_id="123",
+        player=player,
+        ttl_seconds=60,
+    )
 
-    redis_client.redis.smembers.return_value = {"p1"}
-    redis_client.redis.hgetall.return_value = {"name": "John", "score": "5"}
+    redis_client.redis.pipeline.assert_called_once_with(transaction=True)
+
+    assert redis_pipeline.sadd.call_args == call(
+        "room:123:players",
+        "p1",
+    )
+
+    assert redis_pipeline.hset.call_args == call(
+        "room:123:player:p1",
+        mapping={"name": "John"},
+    )
+
+    assert redis_pipeline.zadd.call_args == call(
+        "room:123:scores",
+        {"p1": 0},
+    )
+
+    redis_pipeline.expire.assert_has_calls(
+        [
+            call("room:123:player:p1", 60),
+            call("room:123:players", 60),
+            call("room:123:scores", 60),
+        ],
+        any_order=True,
+    )
+
+    redis_pipeline.execute.assert_awaited_once_with()
+
+@pytest.mark.asyncio
+async def test_get_players(redis_client, redis_pipeline):
+    redis_client.redis.smembers.return_value = {"p1", "p2"}
+    redis_pipeline.execute.return_value = ["John", "Jane"]
+
+    result = await redis_client.get_players("123")
+
+    redis_client.redis.smembers.assert_called_once_with("room:123:players")
+    redis_client.redis.pipeline.assert_called_once_with(transaction=False)
+
+    redis_pipeline.hget.assert_has_calls(
+        [
+            call("room:123:player:p1", "name"),
+            call("room:123:player:p2", "name"),
+        ],
+        any_order=True,
+    )
+
+    redis_pipeline.execute.assert_awaited_once_with()
+
+    assert len(result) == 2
+
+@pytest.mark.asyncio
+async def test_get_players_returns_empty_list_when_room_has_no_players(redis_client):
+    redis_client.redis.smembers.return_value = set()
+
     players = await redis_client.get_players("123")
-    assert players[0]["player_id"] == "p1"
-    assert players[0]["score"] == 5
 
-    await redis_client.remove_player("123", "p1")
-    redis_client.redis.srem.assert_called_once()
-    redis_client.redis.delete.assert_called_with("room:123:player:p1")
+    redis_client.redis.smembers.assert_called_once_with("room:123:players")
+    redis_client.redis.pipeline.assert_not_called()
+    assert players == []
+
+@pytest.mark.asyncio
+async def test_remove_player(redis_client, redis_pipeline):
+    await redis_client.remove_player(
+        room_id="123",
+        player_id="p1",
+    )
+
+    redis_client.redis.pipeline.assert_called_once_with(transaction=True)
+
+    assert redis_pipeline.srem.call_args == call(
+        "room:123:players",
+        "p1",
+    )
+
+    assert redis_pipeline.zrem.call_args == call(
+        "room:123:scores",
+        "p1",
+    )
+
+    assert redis_pipeline.delete.call_args == call(
+        "room:123:player:p1",
+    )
+
+    redis_pipeline.execute.assert_awaited_once_with()
 
 @pytest.mark.asyncio
 async def test_increment(redis_client):
     await redis_client.increment_score("123", "p1", 3)
-    redis_client.redis.hincrby.assert_called_once_with("room:123:player:p1", "score", 3)
+    redis_client.redis.zincrby.assert_called_once_with("room:123:scores", 3, "p1")
 
 @pytest.mark.asyncio
 async def test_publish_room_message(redis_client):
@@ -224,3 +317,54 @@ async def test_get_question_start_none(redis_client):
     result = await redis_client.get_question_start("room123")
     
     assert result is None
+
+@pytest.mark.asyncio
+async def test_get_leaderboard_returns_empty_list_when_no_scores(redis_client):
+    redis_client.redis.zrevrange.return_value = []
+
+    result = await redis_client.get_leaderboard(room_id="123", limit=5)
+
+    redis_client.redis.zrevrange.assert_called_once_with(
+        "room:123:scores",
+        0,
+        4,
+        withscores=True
+    )
+    redis_client.redis.pipeline.assert_not_called()
+    assert result == []
+
+async def test_get_leaderboard(redis_client, redis_pipeline):
+    redis_client.redis.zrevrange.return_value = [
+        ("p1", 100),
+        ("p2", 75),
+        ("p3", 50)
+    ]
+
+    redis_pipeline.execute.return_value = ["John", "Jane", "James"]
+
+    result = await redis_client.get_leaderboard(
+        room_id="123",
+        limit=5,
+    )
+
+    redis_client.redis.zrevrange.assert_called_once_with(
+        "room:123:scores",
+        0,
+        4,
+        withscores=True,
+    )
+
+    redis_client.redis.pipeline.assert_called_once_with(transaction=False)
+
+    redis_pipeline.hget.assert_has_calls(
+        [
+            call("room:123:player:p1", "name"),
+            call("room:123:player:p2", "name"),
+            call("room:123:player:p3", "name"),
+        ],
+        any_order=True,
+    )
+
+    redis_pipeline.execute.assert_awaited_once_with()
+
+    assert len(result) == 3
