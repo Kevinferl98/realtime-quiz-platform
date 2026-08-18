@@ -58,7 +58,7 @@ The system is designed as a distributed set of services:
 
 **gRPC vs REST**: Using gRPC for internal service communication (Game Service → Quiz Service) allows to reduce overhead and benefit from strict Protobuf contract definition.
 
-**Redis for State Management**: Since game rooms are highly volatile, Redis provides the sub-millisecond latency required to track game status.
+**Redis for State Management**: Redis provides low-latency access to volatile game state and enables state synchronization between Game Service replicas.
 
 **WebSocket Connection Resilience**: To prevent resource leaks caused by silent client disconnections, the Game Service leverages native Uvicorn protocol-level heartbeats.
 
