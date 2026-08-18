@@ -60,7 +60,7 @@ async def test_create_room_with_empty_questions(mock_redis, mock_quiz_client):
     mock_quiz_client.get_quiz_by_id.return_value = quiz_data
 
     with pytest.raises(QuizEmptyError) as exc_info:
-        result = await create_room(
+        await create_room(
             redis=mock_redis,
             quiz_id=quiz_id,
             user_id=user_id,
