@@ -100,18 +100,17 @@ class RedisClient:
     ) -> None:
         players_key = f"room:{room_id}:players"
         scores_key = f"room:{room_id}:scores"
-        player_key = f"room:{room_id}:player:{player.player_id}"
 
         async with self.redis.pipeline(transaction=True) as pipe:
-            pipe.sadd(players_key, player.player_id)
             pipe.hset(
-                player_key,
-                mapping={
-                    "name": player.name
-                }
+                players_key,
+                player.player_id,
+                player.name
             )
-            pipe.zadd(scores_key, {player.player_id: 0})
-            pipe.expire(player_key, ttl_seconds)
+            pipe.zadd(
+                scores_key,
+                {player.player_id: 0}
+            )
             pipe.expire(players_key, ttl_seconds)
             pipe.expire(scores_key, ttl_seconds)
             await pipe.execute()
@@ -119,41 +118,30 @@ class RedisClient:
     async def remove_player(self, room_id: str, player_id: str) -> None:
         players_key = f"room:{room_id}:players"
         scores_key = f"room:{room_id}:scores"
-        player_key = f"room:{room_id}:player:{player_id}"
 
         async with self.redis.pipeline(transaction=True) as pipe:
-            pipe.srem(players_key, player_id)
+            pipe.hdel(players_key, player_id)
             pipe.zrem(scores_key, player_id)
-            pipe.delete(player_key)
             await pipe.execute()
 
     async def get_players(self, room_id: str) -> list[dict]:
         players_key = f"room:{room_id}:players"
-
-        player_ids = await self.redis.smembers(players_key)
-        if not player_ids:
-            return []
-
-        async with self.redis.pipeline(transaction=False) as pipe:
-            for player_id in player_ids:
-                pipe.hget(f"room:{room_id}:player:{player_id}", "name")
-
-            names = await pipe.execute()
+        players = await self.redis.hgetall(players_key)
 
         return [
             {
                 "player_id": player_id,
                 "name": name
             }
-            for player_id, name in zip(player_ids, names)
-            if name is not None
+            for player_id, name in players.items()
         ]
 
     async def count_players(self, room_id: str) -> int:
-        return await self.redis.scard(f"room:{room_id}:players")
+        return await self.redis.hlen(f"room:{room_id}:players")
 
     async def get_leaderboard(self, room_id: str, limit: int = 5):
         scores_key = f"room:{room_id}:scores"
+        players_key = f"room:{room_id}:players"
 
         entries = await self.redis.zrevrange(
             scores_key,
@@ -167,10 +155,7 @@ class RedisClient:
 
         async with self.redis.pipeline(transaction=False) as pipe:
             for player_id, _score in entries:
-                pipe.hget(
-                    f"room:{room_id}:player:{player_id}",
-                    "name"
-                )
+                pipe.hget(players_key, player_id)
 
             names = await pipe.execute()
 
