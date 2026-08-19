@@ -10,6 +10,7 @@ from pathlib import Path
 logger = get_logger(__name__)
 
 SCRIPTS_DIR = Path(__file__).parent / "redis_scripts"
+_INTERNAL_PLAYER_ID = "__room_meta__"
 
 class RedisClient:
     def __init__(self):
@@ -30,10 +31,12 @@ class RedisClient:
     ) -> bool:
         room_key = f"room:{room_id}"
         questions_key = f"{room_key}:questions"
+        players_key = f"{room_key}:players"
+        scores_key = f"{room_key}:scores"
         questions_json = json.dumps(questions)
 
         result = await self._create_room_script(
-            keys=[room_key, questions_key],
+            keys=[room_key, questions_key, players_key, scores_key],
             args=[
                 room_id,
                 owner_id,
@@ -96,7 +99,6 @@ class RedisClient:
             self,
             room_id: str,
             player: Player,
-            ttl_seconds: int = 3600
     ) -> None:
         players_key = f"room:{room_id}:players"
         scores_key = f"room:{room_id}:scores"
@@ -111,8 +113,6 @@ class RedisClient:
                 scores_key,
                 {player.player_id: 0}
             )
-            pipe.expire(players_key, ttl_seconds)
-            pipe.expire(scores_key, ttl_seconds)
             await pipe.execute()
 
     async def remove_player(self, room_id: str, player_id: str) -> None:
@@ -134,10 +134,14 @@ class RedisClient:
                 "name": name
             }
             for player_id, name in players.items()
+            if player_id != _INTERNAL_PLAYER_ID
         ]
 
     async def count_players(self, room_id: str) -> int:
-        return await self.redis.hlen(f"room:{room_id}:players")
+        return max(
+            0,
+            await self.redis.hlen(f"room:{room_id}:players") - 1,
+        )
 
     async def get_leaderboard(self, room_id: str, limit: int = 5):
         scores_key = f"room:{room_id}:scores"
@@ -146,9 +150,15 @@ class RedisClient:
         entries = await self.redis.zrevrange(
             scores_key,
             0,
-            limit - 1,
+            limit,
             withscores=True
         )
+
+        entries = [
+            (player_id, score)
+            for player_id, score in entries
+            if player_id != _INTERNAL_PLAYER_ID
+        ][:limit]
 
         if not entries:
             return []

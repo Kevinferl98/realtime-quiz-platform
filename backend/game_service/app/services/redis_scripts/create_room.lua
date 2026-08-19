@@ -1,5 +1,7 @@
 -- KEYS[1] = room:{room_id}
 -- KEYS[2] = room:{room_id}:questions
+-- KEYS[3] = room:{room_id}:players
+-- KEYS[4] = room:{room_id}:scores
 
 -- ARGV[1] = room_id
 -- ARGV[2] = owner_id
@@ -21,7 +23,15 @@ redis.call('HSET', KEYS[1],
 
 redis.call('SET', KEYS[2], ARGV[4])
 
+-- Redis cannot expire empty hashes or sorted sets because they do not exist
+-- until they contain at least one field/member. The internal member keeps the
+-- collections alive so their TTL starts together with the room TTL.
+redis.call('HSET', KEYS[3], '__room_meta__', '1')
+redis.call('ZADD', KEYS[4], 0, '__room_meta__')
+
 redis.call('EXPIRE', KEYS[1], ARGV[5])
 redis.call('EXPIRE', KEYS[2], ARGV[5])
+redis.call('EXPIRE', KEYS[3], ARGV[5])
+redis.call('EXPIRE', KEYS[4], ARGV[5])
 
 return 1
