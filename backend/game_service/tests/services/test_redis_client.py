@@ -14,7 +14,6 @@ def redis_client():
         "hgetall",
         "hlen",
         "set",
-        "get",
         "smembers",
         "zincrby",
         "zrevrange",
