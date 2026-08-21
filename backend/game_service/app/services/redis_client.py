@@ -270,20 +270,7 @@ class RedisClient:
             logger.debug(f"Lock released: {key}")
             return True
         logger.warning(f"Lock not released, value mismatch: {key}")
-        return False 
-    
-    async def set_question_start(self, room_id: str, ttl: int):
-        await self.redis.set(
-            f"room:{room_id}:question_start",
-            time.time(),
-            ex=ttl
-        )
-
-    async def get_question_start(self, room_id: str) -> float | None:
-        value = await self.redis.get(f"room:{room_id}:question_start")
-        if value is None:
-            return None
-        return float(value)
+        return False
 
     @staticmethod
     def _room_key(room_id: str) -> str:

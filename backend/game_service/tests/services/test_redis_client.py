@@ -273,40 +273,6 @@ async def test_get_answers_empty(redis_client):
     assert isinstance(result, dict)
 
 @pytest.mark.asyncio
-async def test_set_question_start(redis_client):
-    room_id = "room123"
-    ttl = 30
-    fixed_time = 1711000000.0
-    
-    with patch("time.time", return_value=fixed_time):
-        await redis_client.set_question_start(room_id, ttl)
-    
-    redis_client.redis.set.assert_called_once_with(
-        f"room:{room_id}:question_start",
-        fixed_time,
-        ex=ttl
-    )
-
-@pytest.mark.asyncio
-async def test_get_question_start_found(redis_client):
-    room_id = "room123"
-    redis_client.redis.get.return_value = "1711000000.0"
-    
-    result = await redis_client.get_question_start(room_id)
-    
-    assert isinstance(result, float)
-    assert result == 1711000000.0
-    redis_client.redis.get.assert_called_once_with(f"room:{room_id}:question_start")
-
-@pytest.mark.asyncio
-async def test_get_question_start_none(redis_client):
-    redis_client.redis.get.return_value = None
-    
-    result = await redis_client.get_question_start("room123")
-    
-    assert result is None
-
-@pytest.mark.asyncio
 async def test_get_leaderboard_returns_empty_list_when_no_scores(redis_client):
     redis_client.redis.zrevrange.return_value = []
 
