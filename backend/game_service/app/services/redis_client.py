@@ -178,17 +178,22 @@ class RedisClient:
         ]
     
     async def save_answer(self, room_id: str, question_index: int, player_id: str, answer: str):
-        await self.redis.hset(
-            f"room:{room_id}:answers:{question_index}",
-            player_id, 
-            json.dumps({
-                "answer": answer,
-                "ts": time.time()
-            })
-        )
+        answers_key = self._answers_key(room_id, question_index)
+
+        async with self.redis.pipeline(transaction=True) as pipe:
+            pipe.hset(
+                answers_key,
+                player_id,
+                json.dumps({
+                    "answer": answer,
+                    "ts": time.time()
+                })
+            )
+            pipe.expire(answers_key, 300, nx=True)
+            await pipe.execute()
 
     async def get_answers(self, room_id: str, question_index: int):
-        raw =  await self.redis.hgetall(f"room:{room_id}:answers:{question_index}")
+        raw =  await self.redis.hgetall(self._answers_key(room_id, question_index))
 
         parsed = {}
         for pid, data in raw.items():
@@ -197,7 +202,10 @@ class RedisClient:
         return parsed
 
     async def delete_answers(self, room_id: str, question_index: int):
-        await self.redis.delete(f"room:{room_id}:answers:{question_index}")
+        await self.redis.delete(self._answers_key(room_id, question_index))
+
+    async def count_answers(self, room_id: str, question_index: int) -> int:
+        return await self.redis.hlen(self._answers_key(room_id, question_index))
 
     async def increment_score(
             self,
@@ -277,9 +285,6 @@ class RedisClient:
             return None
         return float(value)
 
-    async def count_answers(self, room_id: str, question_index: int) -> int:
-        return await self.redis.hlen(f"room:{room_id}:answers:{question_index}")
-
     @staticmethod
     def _room_key(room_id: str) -> str:
         return f"{ROOM_PREFIX}{room_id}"
@@ -295,6 +300,10 @@ class RedisClient:
     @classmethod
     def _scores_key(cls, room_id: str) -> str:
         return f"{cls._room_key(room_id)}:scores"
+
+    @classmethod
+    def _answers_key(cls, room_id: str, question_index: int) -> str:
+        return f"{cls._room_key(room_id)}:answers:{question_index}"
 
     def _register_script(self, filename: str):
         """Load and register a Lua script from the scripts directory."""

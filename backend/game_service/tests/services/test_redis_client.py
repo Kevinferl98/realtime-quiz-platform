@@ -220,8 +220,8 @@ async def test_locks(redis_client):
     assert released is False
 
 @pytest.mark.asyncio
-async def test_save_answer(redis_client):
-    room_id = "room123"
+async def test_save_answer(redis_client, redis_pipeline):
+    room_id = "123"
     q_index = 0
     player_id = "player_1"
     answer = "A"
@@ -229,18 +229,20 @@ async def test_save_answer(redis_client):
     fixed_time = 1711000000.0
     with patch("time.time", return_value=fixed_time):
         await redis_client.save_answer(room_id, q_index, player_id, answer)
-    
-    expected_key = f"room:{room_id}:answers:{q_index}"
-    expected_value = json.dumps({
-        "answer": answer,
-        "ts": fixed_time
-    })
-    
-    redis_client.redis.hset.assert_called_once_with(
-        expected_key,
-        player_id,
-        expected_value
+
+    redis_client.redis.pipeline.assert_called_once_with(transaction=True)
+
+    assert redis_pipeline.hset.call_args == call(
+        "room:123:answers:0",
+        "player_1",
+        json.dumps({
+            "answer": answer,
+            "ts": fixed_time
+        })
     )
+
+    redis_pipeline.expire.assert_called_once_with("room:123:answers:0", 300, nx=True)
+    redis_pipeline.execute.assert_awaited_once_with()
 
 @pytest.mark.asyncio
 async def test_get_answers_success(redis_client):
