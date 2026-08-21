@@ -125,8 +125,8 @@ class RoomManager:
             event = self._answer_events.get(event_key)
             if event:
                 answers_count = await self._redis.count_answers(room_id, q_idx)
-                players = await self._redis.get_players(room_id)
-                if players and answers_count >= len(players):
+                players_count = await self._redis.count_players(room_id)
+                if players_count and answers_count >= players_count:
                     event.set()
 
         # Execute local broadcast outside global orchestration locks.

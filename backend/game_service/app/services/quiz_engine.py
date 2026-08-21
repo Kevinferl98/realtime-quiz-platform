@@ -44,13 +44,12 @@ class QuizEngine:
                     {"type": "question", "question": question, "index": idx}
                 )
 
-                # Set start timestamp with a grace period to prevent clock drift issues.
-                await self._redis.set_question_start(self.room_id, QUESTION_DURATION + 5)
+                question_start = time.time()
 
                 # Suspend execution until all answers are submitted or the timeout expires.
                 await self._wait_for_answers_or_timeout(idx)
 
-                await self._process_answers(question, idx)
+                await self._process_answers(question, idx, question_start)
                 await asyncio.sleep(ANSWER_REVEAL_DURATION)
 
                 await self._publish_leaderboard(final=is_last)
@@ -98,10 +97,9 @@ class QuizEngine:
 
         self._events_map.pop(event_key, None)
 
-    async def _process_answers(self, question: dict, question_index: int) -> None:
+    async def _process_answers(self, question: dict, question_index: int, start_time: float) -> None:
         """Evaluates answers from Redis and increments scores with time-based decay logic."""
         answers = await self._redis.get_answers(self.room_id, question_index)
-        start_time = await self._redis.get_question_start(self.room_id) or time.time()
 
         await self._redis.publish_room_message(
             self.room_id,
@@ -125,12 +123,14 @@ class QuizEngine:
 
     async def _publish_leaderboard(self, final: bool = False) -> None:
         """Fetches current scores and publishes the top 5 players to the room channel."""
-        players = await self._redis.get_players(self.room_id)
-        players_sorted = sorted(players, key=lambda p: p["score"], reverse=True)
+        leaderboard = await self._redis.get_leaderboard(self.room_id, 5)
 
         leaderboard = [
-            {"name": p["name"], "score": p["score"]}
-            for p in players_sorted[:5]
+            {
+                "name": player["name"],
+                "score": player["score"],
+            }
+            for player in leaderboard
         ]
 
         await self._redis.publish_room_message(

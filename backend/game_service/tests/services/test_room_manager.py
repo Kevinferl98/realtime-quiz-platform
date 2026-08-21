@@ -184,7 +184,7 @@ async def test_handle_answer_submitted_unblocks_when_all_players_answered(room_m
     early_event = asyncio.Event()
     room_manager._answer_events[event_key] = early_event
 
-    room_manager._redis.get_players.return_value = [{"name": "P1"}, {"name": "P2"}]
+    room_manager._redis.count_players.return_value = 2
     room_manager._redis.count_answers.return_value = 2
 
     message = {"type": "answer_submitted", "current_question_index": q_idx}
@@ -202,7 +202,7 @@ async def test_handle_answer_submitted_does_not_unblock_when_answers_missing(roo
     early_event = asyncio.Event()
     room_manager._answer_events[event_key] = early_event
 
-    room_manager._redis.get_players.return_value = [{"name": "P1"}, {"name": "P2"}, {"name": "P3"}]
+    room_manager._redis.count_players.return_value = 3
     room_manager._redis.count_answers.return_value = 2
 
     message = {"type": "answer_submitted", "current_question_index": q_idx}

@@ -11,14 +11,18 @@ logger = get_logger(__name__)
 
 SCRIPTS_DIR = Path(__file__).parent / "redis_scripts"
 
+ROOM_PREFIX = "room:"
+
+INTERNAL_PLAYER_ID = "__room_meta__"
+
+DEFAULT_ROOM_TTL = 3600
+DEFAULT_LEADERBOARD_LIMIT = 5
+
 class RedisClient:
     def __init__(self):
         self.redis = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
         self._locks: dict[str, str] = {}
-
-        lua_path = SCRIPTS_DIR / "create_room.lua"
-        script_content = lua_path.read_text(encoding="utf-8")
-        self._create_room_script = self.redis.register_script(script_content)
+        self._create_room_script = self._register_script("create_room.lua")
 
     async def create_room(
             self,
@@ -26,19 +30,22 @@ class RedisClient:
             owner_id: str,
             quiz_id: str,
             questions: list[dict],
-            ttl_seconds: int = 3600
+            ttl_seconds: int = DEFAULT_ROOM_TTL
     ) -> bool:
-        room_key = f"room:{room_id}"
-        questions_key = f"{room_key}:questions"
-        questions_json = json.dumps(questions)
+        room_key = self._room_key(room_id)
 
         result = await self._create_room_script(
-            keys=[room_key, questions_key],
+            keys=[
+                room_key,
+                self._questions_key(room_id),
+                self._players_key(room_id),
+                self._scores_key(room_id)
+            ],
             args=[
                 room_id,
                 owner_id,
                 quiz_id,
-                questions_json,
+                json.dumps(questions),
                 ttl_seconds
             ]
         )
@@ -51,16 +58,15 @@ class RedisClient:
             index: int,
             status: str | None = None
     ) -> None:
-        room_key = f"room:{room_id}"
         mapping = {
             "current_question_index": index
         }
 
         if status:
-            mapping["started"] = status
+            mapping["status"] = status
 
         await self.redis.hset(
-            room_key,
+            self._room_key(room_id),
             mapping=mapping
         )
 
@@ -69,16 +75,15 @@ class RedisClient:
             room_id: str,
             status: str
     ) -> None:
-        room_key = f"room:{room_id}"
         await self.redis.hset(
-            room_key,
+            self._room_key(room_id),
             mapping={
                 "status": status
             }
         )
 
     async def get_room_meta(self, room_id: str):
-        data = await self.redis.hgetall(f"room:{room_id}")
+        data = await self.redis.hgetall(self._room_key(room_id))
         if not data:
             return None
 
@@ -86,49 +91,109 @@ class RedisClient:
         return data
     
     async def get_all_questions(self, room_id: str) -> list[dict] | None:
-        data = await self.redis.get(f"room:{room_id}:questions")
+        data = await self.redis.get(self._questions_key(room_id))
         if not data:
             return None
         
         return json.loads(data)
 
-    async def add_player(self, room_id: str, player: Player, ttl_seconds: int = 3600):
-        await self.redis.sadd(f"room:{room_id}:players", player.player_id)
-        await self.redis.hset(f"room:{room_id}:player:{player.player_id}", mapping={
-            "name": player.name,
-            "score": player.score
-        })
-        await self.redis.expire(f"room:{room_id}:player:{player.player_id}", ttl_seconds)
+    async def add_player(
+            self,
+            room_id: str,
+            player: Player,
+    ) -> None:
+        players_key = self._players_key(room_id)
+        scores_key = self._scores_key(room_id)
 
-    async def remove_player(self, room_id: str, player_id: str):
-        await self.redis.srem(f"room:{room_id}:players", player_id)
-        await self.redis.delete(f"room:{room_id}:player:{player_id}")
+        async with self.redis.pipeline(transaction=True) as pipe:
+            pipe.hset(
+                players_key,
+                player.player_id,
+                player.name
+            )
+            pipe.zadd(
+                scores_key,
+                {player.player_id: 0}
+            )
+            await pipe.execute()
+
+    async def remove_player(self, room_id: str, player_id: str) -> None:
+        players_key = self._players_key(room_id)
+        scores_key = self._scores_key(room_id)
+
+        async with self.redis.pipeline(transaction=True) as pipe:
+            pipe.hdel(players_key, player_id)
+            pipe.zrem(scores_key, player_id)
+            await pipe.execute()
 
     async def get_players(self, room_id: str) -> list[dict]:
-        player_ids = await self.redis.smembers(f"room:{room_id}:players")
-        players = []
-        for pid in player_ids:
-            pdata = await self.redis.hgetall(f"room:{room_id}:player:{pid}")
-            if pdata:
-                players.append({
-                    "player_id": pid,
-                    "name": pdata.get("name"),
-                    "score": int(pdata.get("score", 0))
-                })
-        return players
-    
-    async def save_answer(self, room_id: str, question_index: int, player_id: str, answer: str):
-        await self.redis.hset(
-            f"room:{room_id}:answers:{question_index}",
-            player_id, 
-            json.dumps({
-                "answer": answer,
-                "ts": time.time()
-            })
+        players = await self.redis.hgetall(self._players_key(room_id))
+
+        return [
+            {
+                "player_id": player_id,
+                "name": name
+            }
+            for player_id, name in players.items()
+            if player_id != INTERNAL_PLAYER_ID
+        ]
+
+    async def count_players(self, room_id: str) -> int:
+        return max(
+            0,
+            await self.redis.hlen(self._players_key(room_id)) - 1,
         )
 
+    async def get_leaderboard(self, room_id: str, limit: int = DEFAULT_LEADERBOARD_LIMIT):
+        entries = await self.redis.zrevrange(
+            self._scores_key(room_id),
+            0,
+            limit,
+            withscores=True
+        )
+
+        entries = [
+            (player_id, score)
+            for player_id, score in entries
+            if player_id != INTERNAL_PLAYER_ID
+        ][:limit]
+
+        if not entries:
+            return []
+
+        async with self.redis.pipeline(transaction=False) as pipe:
+            for player_id, _score in entries:
+                pipe.hget(self._players_key(room_id), player_id)
+
+            names = await pipe.execute()
+
+        return [
+            {
+                "player_id": player_id,
+                "name": name,
+                "score": int(score)
+            }
+            for (player_id, score), name in zip(entries, names)
+            if name is not None
+        ]
+    
+    async def save_answer(self, room_id: str, question_index: int, player_id: str, answer: str):
+        answers_key = self._answers_key(room_id, question_index)
+
+        async with self.redis.pipeline(transaction=True) as pipe:
+            pipe.hset(
+                answers_key,
+                player_id,
+                json.dumps({
+                    "answer": answer,
+                    "ts": time.time()
+                })
+            )
+            pipe.expire(answers_key, 300, nx=True)
+            await pipe.execute()
+
     async def get_answers(self, room_id: str, question_index: int):
-        raw =  await self.redis.hgetall(f"room:{room_id}:answers:{question_index}")
+        raw =  await self.redis.hgetall(self._answers_key(room_id, question_index))
 
         parsed = {}
         for pid, data in raw.items():
@@ -137,10 +202,22 @@ class RedisClient:
         return parsed
 
     async def delete_answers(self, room_id: str, question_index: int):
-        await self.redis.delete(f"room:{room_id}:answers:{question_index}")
+        await self.redis.delete(self._answers_key(room_id, question_index))
 
-    async def increment_score(self, room_id: str, player_id: str, points: int = 1):
-        await self.redis.hincrby(f"room:{room_id}:player:{player_id}", "score", points)
+    async def count_answers(self, room_id: str, question_index: int) -> int:
+        return await self.redis.hlen(self._answers_key(room_id, question_index))
+
+    async def increment_score(
+            self,
+            room_id: str,
+            player_id: str,
+            points: int = 1
+    ) -> int:
+        return await self.redis.zincrby(
+            self._scores_key(room_id),
+            points,
+            player_id
+        )
     
     async def publish_room_message(self, room_id: str, message: dict):
         try:
@@ -193,20 +270,30 @@ class RedisClient:
             logger.debug(f"Lock released: {key}")
             return True
         logger.warning(f"Lock not released, value mismatch: {key}")
-        return False 
-    
-    async def set_question_start(self, room_id: str, ttl: int):
-        await self.redis.set(
-            f"room:{room_id}:question_start",
-            time.time(),
-            ex=ttl
-        )
+        return False
 
-    async def get_question_start(self, room_id: str) -> float | None:
-        value = await self.redis.get(f"room:{room_id}:question_start")
-        if value is None:
-            return None
-        return float(value)
+    @staticmethod
+    def _room_key(room_id: str) -> str:
+        return f"{ROOM_PREFIX}{room_id}"
 
-    async def count_answers(self, room_id: str, question_index: int) -> int:
-        return await self.redis.hlen(f"room:{room_id}:answers:{question_index}")
+    @classmethod
+    def _questions_key(cls, room_id: str) -> str:
+        return f"{cls._room_key(room_id)}:questions"
+
+    @classmethod
+    def _players_key(cls, room_id: str) -> str:
+        return f"{cls._room_key(room_id)}:players"
+
+    @classmethod
+    def _scores_key(cls, room_id: str) -> str:
+        return f"{cls._room_key(room_id)}:scores"
+
+    @classmethod
+    def _answers_key(cls, room_id: str, question_index: int) -> str:
+        return f"{cls._room_key(room_id)}:answers:{question_index}"
+
+    def _register_script(self, filename: str):
+        """Load and register a Lua script from the scripts directory."""
+        script_path = SCRIPTS_DIR / filename
+        script_content = script_path.read_text(encoding="utf-8")
+        return self.redis.register_script(script_content)
