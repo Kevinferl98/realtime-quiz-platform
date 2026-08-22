@@ -2,7 +2,7 @@ import redis.asyncio as redis
 import json
 import uuid
 import time
-from app.schemas.multiplayer import Room, RoomAnswer, Question
+from app.schemas.multiplayer import Room, RoomAnswer, Question, RoomStatus
 from app.models.multiplayer import Player, LeaderboardEntry
 from app.core.config import config
 from my_observability import get_logger
@@ -70,11 +70,11 @@ class RedisClient:
     async def update_room_status(
             self,
             room_id: str,
-            status: str
+            status: RoomStatus,
     ) -> None:
         await self.redis.hset(
             RedisKeys.room(room_id),
-            mapping={"status": status}
+            mapping={"status": status.value}
         )
 
     async def get_room(self, room_id: str) -> Room | None:

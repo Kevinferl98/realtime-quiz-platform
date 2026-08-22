@@ -4,7 +4,7 @@ from contextlib import suppress
 from typing import Dict
 from app.services.redis.redis_client import RedisClient
 from my_observability import get_logger
-from app.schemas.multiplayer import Question
+from app.schemas.multiplayer import Question, RoomStatus
 
 logger = get_logger(__name__)
 
@@ -32,7 +32,7 @@ class QuizEngine:
             # Initialize room state as started before entering the question loop.
             await self._redis.update_room_status(
                 self.room_id,
-                status="STARTED",
+                status=RoomStatus.STARTED,
             )
 
             for idx, question in enumerate(questions):
@@ -58,14 +58,14 @@ class QuizEngine:
                 if not is_last:
                     await asyncio.sleep(LEADERBOARD_DURATION)
 
-            await self._redis.update_room_status(self.room_id, status="FINISHED")
+            await self._redis.update_room_status(self.room_id, status=RoomStatus.FINISHED)
 
         except asyncio.CancelledError:
             logger.info("Quiz execution explicitly cancelled", room_id=self.room_id)
             with suppress(Exception):
                 await self._redis.update_room_status(
                     self.room_id,
-                    status="CANCELLED",
+                    status=RoomStatus.CANCELLED,
                 )
             raise
         except Exception as e:
@@ -73,7 +73,7 @@ class QuizEngine:
             with suppress(Exception):
                 await self._redis.update_room_status(
                     self.room_id,
-                    status="ERROR",
+                    status=RoomStatus.ERROR,
                 )
             raise
 
