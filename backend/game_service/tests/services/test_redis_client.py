@@ -1,8 +1,9 @@
 import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock, patch, call
-from app.services.redis_client import RedisClient
-from app.schemas.multiplayer import Player
+from app.services.redis.redis_client import RedisClient
+from app.schemas.multiplayer import Question, RoomAnswer
+from app.models.multiplayer import Player, LeaderboardEntry
 
 @pytest.fixture
 def redis_client():
@@ -44,13 +45,12 @@ def redis_pipeline(redis_client):
 
 @pytest.mark.asyncio
 async def test_create_room(redis_client):
-    questions = [
-        {
-            "id": "q1",
-            "text": "Text",
-            "correct_option": "B",
-        },
-    ]
+    questions = [Question(
+        id=1,
+        question_text="Text",
+        options=[],
+        correct_option="B"
+    )]
 
     result = await redis_client.create_room(
         room_id="123",
@@ -76,7 +76,9 @@ async def test_create_room(redis_client):
     assert call.kwargs["args"][0] == "123"
     assert call.kwargs["args"][1] == "owner"
     assert call.kwargs["args"][2] == "quiz1"
-    assert json.loads(call.kwargs["args"][3]) == questions
+    assert json.loads(call.kwargs["args"][3]) == [
+        q.model_dump() for q in questions
+    ]
     assert call.kwargs["args"][4] == 50
 
 @pytest.mark.asyncio
@@ -89,15 +91,16 @@ async def test_get_room_meta(redis_client):
         "current_question_index": "2",
     }
 
-    result = await redis_client.get_room_meta("123")
+    result = await redis_client.get_room("123")
 
     redis_client.redis.hgetall.assert_called_once_with("room:123")
 
-    assert result["room_id"] == "123"
-    assert result["owner_id"] == "owner"
-    assert result["quiz_id"] == "quiz1"
-    assert result["status"] == "STARTED"
-    assert result["current_question_index"] == 2
+    assert result is not None
+    assert result.room_id == "123"
+    assert result.owner_id == "owner"
+    assert result.quiz_id == "quiz1"
+    assert result.status == "STARTED"
+    assert result.current_question_index == 2
 
 @pytest.mark.asyncio
 async def test_add_player(redis_client, redis_pipeline):
@@ -136,7 +139,7 @@ async def test_get_players(redis_client):
     redis_client.redis.hgetall.assert_called_once_with("room:123:players")
 
     assert len(result) == 2
-    assert all(player["player_id"] != "__room_meta__" for player in result)
+    assert all(player.player_id != "__room_meta__" for player in result)
 
 @pytest.mark.asyncio
 async def test_get_players_returns_empty_list_when_room_has_no_players(redis_client):
@@ -234,10 +237,7 @@ async def test_save_answer(redis_client, redis_pipeline):
     assert redis_pipeline.hset.call_args == call(
         "room:123:answers:0",
         "player_1",
-        json.dumps({
-            "answer": answer,
-            "ts": fixed_time
-        })
+        RoomAnswer(answer=answer, timestamp=fixed_time).model_dump_json(),
     )
 
     redis_pipeline.expire.assert_called_once_with("room:123:answers:0", 300, nx=True)
@@ -249,17 +249,17 @@ async def test_get_answers_success(redis_client):
     q_index = 0
     
     mock_data = {
-        "p1": json.dumps({"answer": "A", "ts": 100.0}),
-        "p2": json.dumps({"answer": "B", "ts": 101.5})
+        "p1": json.dumps({"answer": "A", "timestamp": 100.0}),
+        "p2": json.dumps({"answer": "B", "timestamp": 101.5})
     }
     redis_client.redis.hgetall.return_value = mock_data
     
     result = await redis_client.get_answers(room_id, q_index)
     
     assert len(result) == 2
-    assert result["p1"]["answer"] == "A"
-    assert isinstance(result["p2"]["ts"], float)
-    assert result["p2"]["ts"] == 101.5
+    assert result["p1"].answer == "A"
+    assert isinstance(result["p2"].timestamp, float)
+    assert result["p2"].timestamp == 101.5
     redis_client.redis.hgetall.assert_called_once_with(f"room:{room_id}:answers:{q_index}")
 
 @pytest.mark.asyncio
@@ -321,9 +321,21 @@ async def test_get_leaderboard(redis_client, redis_pipeline):
     redis_pipeline.execute.assert_awaited_once_with()
 
     assert result == [
-        {"player_id": "p1", "name": "John", "score": 100},
-        {"player_id": "p2", "name": "Jane", "score": 75},
-        {"player_id": "p3", "name": "James", "score": 50},
+        LeaderboardEntry(
+            player_id="p1",
+            name="John",
+            score=100,
+        ),
+        LeaderboardEntry(
+            player_id="p2",
+            name="Jane",
+            score=75,
+        ),
+        LeaderboardEntry(
+            player_id="p3",
+            name="James",
+            score=50,
+        ),
     ]
 
 @pytest.mark.asyncio
@@ -337,4 +349,4 @@ async def test_get_leaderboard_excludes_internal_room_marker(redis_client, redis
     result = await redis_client.get_leaderboard("123", limit=5)
 
     redis_pipeline.hget.assert_called_once_with("room:123:players", "p1")
-    assert result == [{"player_id": "p1", "name": "John", "score": 100}]
+    assert result == [LeaderboardEntry(player_id="p1", name="John", score=100)]

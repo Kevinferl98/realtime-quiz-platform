@@ -1,5 +1,5 @@
 import random
-from app.services.redis_client import RedisClient
+from app.services.redis.redis_client import RedisClient
 from app.schemas.multiplayer import RoomCreateResponse
 from app.services.quiz_grpc_client import QuizServiceClient
 from my_observability import get_logger

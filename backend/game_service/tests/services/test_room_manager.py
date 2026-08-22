@@ -1,21 +1,18 @@
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, create_autospec
 from fastapi import WebSocket
 from app.services.connection_manager import ConnectionManager
-from app.services.redis_client import RedisClient
+from app.services.redis.redis_client import RedisClient
 from app.services.room_manager import QUIZ_LOCK_TTL, RoomManager
+from app.models.multiplayer import Player
 
 @pytest.fixture
 def mock_redis():
-    client = MagicMock(spec=RedisClient)
-    client.acquire_lock = AsyncMock(return_value=True)
-    client.release_lock = AsyncMock()
-    client.remove_player = AsyncMock()
-    client.get_players = AsyncMock(return_value=[{"name": "Player1"}, {"name": "Player2"}])
-    client.publish_room_message = AsyncMock()
-    client.subscribe_rooms = AsyncMock()
-    client.count_answers = AsyncMock(return_value=2)
+    client = create_autospec(RedisClient, instance=True)
+    client.acquire_lock.return_value = True
+    client.get_players.return_value=[Player(player_id="1", name="Player1"), Player(player_id="2", name="Player2")]
+    client.count_answers.return_value=2
     return client
 
 @pytest.fixture

@@ -3,7 +3,7 @@ from unittest.mock import patch, create_autospec
 from app.exception import QuizNotFoundError, QuizEmptyError, CreateRoomError
 from app.schemas.multiplayer import RoomCreateResponse
 from app.services.quiz_grpc_client import QuizServiceClient
-from app.services.redis_client import RedisClient
+from app.services.redis.redis_client import RedisClient
 from app.services.room_service import create_room
 
 @pytest.fixture

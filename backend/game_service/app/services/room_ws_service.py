@@ -1,6 +1,6 @@
 import uuid
 from fastapi import WebSocket, WebSocketDisconnect
-from app.schemas.multiplayer import Player
+from app.models.multiplayer import Player
 from app.domain.room_session import RoomSession
 from my_observability import get_logger
 from app.core.security import authenticate_token_string

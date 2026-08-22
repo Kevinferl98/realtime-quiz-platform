@@ -23,9 +23,6 @@ redis.call('HSET', KEYS[1],
 
 redis.call('SET', KEYS[2], ARGV[4])
 
--- Redis cannot expire empty hashes or sorted sets because they do not exist
--- until they contain at least one field/member. The internal member keeps the
--- collections alive so their TTL starts together with the room TTL.
 redis.call('HSET', KEYS[3], '__room_meta__', '1')
 redis.call('ZADD', KEYS[4], 0, '__room_meta__')
 
