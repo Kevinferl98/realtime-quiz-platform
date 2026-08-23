@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, create_autospec
 from app.exception import QuizNotFoundError, QuizEmptyError, CreateRoomError
-from app.schemas.multiplayer import RoomCreateResponse
+from app.schemas.multiplayer import RoomCreateResponse, Question
 from app.services.quiz_grpc_client import QuizServiceClient
 from app.services.redis.redis_client import RedisClient
 from app.services.room_service import create_room
@@ -23,7 +23,7 @@ async def test_create_room_success(mock_redis, mock_quiz_client):
     quiz_data = {
         "quizId": quiz_id,
         "title": "Test Quiz",
-        "questions": [{"q": "test"}]
+        "questions": [{"id": "q1", "question_text": "question 1", "options": ["A", "B", "C", "D"], "correct_option": "A"}]
     }
     mock_quiz_client.get_quiz_by_id.return_value = quiz_data
 
@@ -44,7 +44,7 @@ async def test_create_room_success(mock_redis, mock_quiz_client):
         room_id=expected_room_code,
         owner_id=user_id,
         quiz_id=quiz_id,
-        questions=quiz_data["questions"],
+        questions=[Question.model_validate(question) for question in quiz_data.get("questions", [])],
         ttl_seconds=3600
     )
 
@@ -94,7 +94,7 @@ async def test_create_room_raises_runtime_error_when_room_code_collision_occurs(
 
     quiz_data = {
         "quizId": quiz_id,
-        "questions": [{"q": "test"}]
+        "questions": [{"id": "q1", "question_text": "question 1", "options": ["A", "B", "C", "D"], "correct_option": "A"}]
     }
     mock_quiz_client.get_quiz_by_id.return_value = quiz_data
 

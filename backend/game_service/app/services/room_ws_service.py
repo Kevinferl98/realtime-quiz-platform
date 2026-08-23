@@ -7,7 +7,7 @@ from my_observability import get_logger
 from app.core.security import authenticate_token_string
 from app.services.redis.redis_client import RedisClient
 from app.services.room_manager import RoomManager
-from app.schemas.multiplayer import Room
+from app.schemas.multiplayer import Room, RoomStatus
 
 logger = get_logger(__name__)
 
@@ -51,7 +51,7 @@ class RoomWebSocketService:
             raise Exception("Room not found")
 
         # Prevent late-joins to keep quiz state and scoring synchronization coherent.
-        if room.status != "CREATED":
+        if room.status != RoomStatus.CREATED:
             await websocket.send_json({
                 "type": "error",
                 "code": "ROOM_ALREADY_STARTED",

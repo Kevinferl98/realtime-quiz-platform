@@ -46,7 +46,7 @@ def redis_pipeline(redis_client):
 @pytest.mark.asyncio
 async def test_create_room(redis_client):
     questions = [Question(
-        id=1,
+        id="q1",
         question_text="Text",
         options=[],
         correct_option="B"

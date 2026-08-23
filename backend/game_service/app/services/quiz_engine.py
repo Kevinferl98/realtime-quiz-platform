@@ -42,7 +42,11 @@ class QuizEngine:
 
                 await self._redis.publish_room_message(
                     self.room_id,
-                    {"type": "question", "question": question, "index": idx}
+                    {
+                        "type": "question",
+                        "question": question.model_dump(mode="json"),
+                        "index": idx,
+                    }
                 )
 
                 question_start = time.time()

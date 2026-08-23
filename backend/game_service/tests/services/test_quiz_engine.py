@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import create_autospec, AsyncMock, patch
 from app.services.quiz_engine import QuizEngine
 from app.services.redis.redis_client import RedisClient
-from app.schemas.multiplayer import Question, RoomAnswer
+from app.schemas.multiplayer import Question, RoomAnswer, RoomStatus
 
 @pytest.fixture
 def mock_redis():
@@ -16,8 +16,8 @@ def events_map():
 @pytest.fixture
 def sample_question():
     return [
-        Question(id=1, question_text="Question 1", options=["A", "B", "C", "D"], correct_option="A"),
-        Question(id=2, question_text="Question 2", options=["A", "B", "C", "D"], correct_option="B")
+        Question(id="q1", question_text="Question 1", options=["A", "B", "C", "D"], correct_option="A"),
+        Question(id="q2", question_text="Question 2", options=["A", "B", "C", "D"], correct_option="B")
     ]
 
 @pytest.fixture
@@ -60,12 +60,17 @@ async def test_complete_successful_lifecycle(
 
     for idx, q in enumerate(sample_question):
         mock_redis.publish_room_message.assert_any_call(
-            engine.room_id, {"type": "question", "question": q, "index": idx}
+            engine.room_id,
+            {
+                "type": "question",
+                "question": q.model_dump(mode="json"),
+                "index": idx,
+            }
         )
 
 @pytest.mark.asyncio
 async def test_process_answers_with_linear_score_decay(engine, mock_redis):
-    question = Question(id=1, question_text="Question 1", options=["A", "B", "C", "D"], correct_option="A")
+    question = Question(id="q1", question_text="Question 1", options=["A", "B", "C", "D"], correct_option="A")
     question_idx = 0
 
     mock_redis.get_answers.return_value = {
@@ -102,4 +107,7 @@ async def test_lifecycle_exception_sets_room_status_to_error(engine, mock_redis)
         with pytest.raises(RuntimeError):
             await engine.run_lifecycle()
 
-            mock_redis.update_room_status.assert_called_with(engine.room_id, "ERROR")
+            mock_redis.update_room_status.assert_called_with(
+                engine.room_id,
+                status=RoomStatus.ERROR,
+            )

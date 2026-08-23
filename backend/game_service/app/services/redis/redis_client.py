@@ -215,14 +215,19 @@ class RedisClient:
             if name is not None
         ]
     
-    async def publish_room_message(self, room_id: str, message: dict) -> None:
+    async def publish_room_message(
+            self,
+            room_id: str,
+            message: dict[str, object],
+    ) -> None:
         try:
             await self.redis.publish(
                 RedisKeys.room_channel(room_id),
                 json.dumps(message)
             )
         except Exception as e:
-            logger.warning(f"Error publishing to room {room_id}: {e}")
+            logger.exception(f"Error publishing to room {room_id}: {e}")
+            raise
 
     async def subscribe_rooms(self, handler) -> None:
         pubsub = self.redis.pubsub()
@@ -261,7 +266,7 @@ class RedisClient:
             return 0
         end
         """
-        result = await self.redis.eval(lua, keys=[key], args=[lock_value])
+        result = await self.redis.eval(lua, 1, key, lock_value)
         if result:
             logger.debug(f"Lock released: {key}")
             return True

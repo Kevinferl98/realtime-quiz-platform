@@ -19,7 +19,7 @@ class Room(BaseModel):
     status: RoomStatus
 
 class Question(BaseModel):
-    id: int
+    id: str
     question_text: str
     options: list[str]
     correct_option: str
