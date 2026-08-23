@@ -1,31 +1,31 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
+from app.services.redis.redis_client import RedisClient
+from app.services.room_manager import RoomManager
 from app.services.room_ws_service import RoomWebSocketService
 from app.domain.room_session import RoomSession
+from app.schemas.multiplayer import Room, RoomStatus
+from app.models.multiplayer import Player
 
 @pytest.fixture
-def mock_manager():
-    manager = MagicMock()
-    manager.connect = AsyncMock()
-    manager.disconnect = AsyncMock()
-    manager.start_quiz = AsyncMock()
-    return manager
+def mock_manager() -> RoomManager:
+    return create_autospec(RoomManager, instance=True)
 
 @pytest.fixture
-def mock_redis():
-    redis = MagicMock()
-    redis.get_room_meta = AsyncMock(return_value={
-        "owner_id": "host-id",
-        "status": "CREATED"
-    })
-    redis.add_player = AsyncMock()
-    redis.get_players = AsyncMock(return_value=[{"name": "John"}])
-    redis.publish_room_message = AsyncMock()
-    redis.save_answer = AsyncMock()
+def mock_redis() -> RedisClient:
+    redis = create_autospec(RedisClient, instance=True)
+    redis.get_room.return_value = Room(
+        room_id="1",
+        owner_id="host-id",
+        quiz_id="1",
+        current_question_index=0,
+        status=RoomStatus.CREATED
+    )
+    redis.get_players.return_value=[Player(player_id="p1", name="John")]
     return redis
 
 @pytest.fixture
-def mock_websocket():
+def mock_websocket() -> MagicMock:
     ws = MagicMock()
     ws.send_json = AsyncMock()
     ws.close = AsyncMock()
@@ -33,7 +33,7 @@ def mock_websocket():
     return ws
 
 @pytest.fixture
-def service(mock_manager, mock_redis):
+def service(mock_manager: RoomManager, mock_redis: RedisClient) -> RoomWebSocketService:
     return RoomWebSocketService(mock_manager, mock_redis)
 
 @pytest.mark.asyncio
@@ -107,10 +107,13 @@ async def test_start_as_player_fails(service, mock_websocket):
 
 @pytest.mark.asyncio
 async def test_handle_answer(service, mock_redis):
-    mock_redis.get_room_meta.return_value = {
-        "owner_id": "host-id",
-        "current_question_index": 2
-    }
+    mock_redis.get_room.return_value = Room(
+        room_id="1",
+        owner_id="host-id",
+        quiz_id="1",
+        current_question_index=2,
+        status=RoomStatus.CREATED
+    )
 
     session = RoomSession(
         player_id="p1",
@@ -128,7 +131,7 @@ async def test_handle_answer(service, mock_redis):
 
 @pytest.mark.asyncio
 async def test_room_not_found(service, mock_websocket, mock_redis):
-    mock_redis.get_room_meta.return_value = None
+    mock_redis.get_room.return_value = None
 
     with pytest.raises(Exception):
         await service._initialize_session(mock_websocket, "room1")
@@ -137,11 +140,13 @@ async def test_room_not_found(service, mock_websocket, mock_redis):
 
 @pytest.mark.asyncio
 async def test_room_already_started(service, mock_websocket, mock_redis):
-    mock_redis.get_room_meta.return_value = {
-        "owner_id": "host-id",
-        "current_question_index": 2,
-        "started": True
-    }
+    mock_redis.get_room.return_value = Room(
+        room_id="1",
+        owner_id="host-id",
+        quiz_id="1",
+        current_question_index=2,
+        status=RoomStatus.STARTED
+    )
 
     with pytest.raises(Exception):
         await service._initialize_session(mock_websocket, "room1")

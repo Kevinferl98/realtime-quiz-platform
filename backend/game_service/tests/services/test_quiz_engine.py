@@ -2,7 +2,8 @@ import asyncio
 import pytest
 from unittest.mock import create_autospec, AsyncMock, patch
 from app.services.quiz_engine import QuizEngine
-from app.services.redis_client import RedisClient
+from app.services.redis.redis_client import RedisClient
+from app.schemas.multiplayer import Question, RoomAnswer, RoomStatus
 
 @pytest.fixture
 def mock_redis():
@@ -15,8 +16,8 @@ def events_map():
 @pytest.fixture
 def sample_question():
     return [
-        {"text": "Question 1", "correct_option": "A", "options": ["A", "B", "C"]},
-        {"text": "Question 2", "correct_option": "B", "options": ["A", "B", "C"]}
+        Question(id="q1", question_text="Question 1", options=["A", "B", "C", "D"], correct_option="A"),
+        Question(id="q2", question_text="Question 2", options=["A", "B", "C", "D"], correct_option="B")
     ]
 
 @pytest.fixture
@@ -30,11 +31,11 @@ def engine(mock_redis, events_map):
 
 @pytest.mark.asyncio
 async def test_lifecycle_aborts_if_no_questions_found(engine, mock_redis):
-    mock_redis.get_all_questions.return_value = None
+    mock_redis.get_questions.return_value = None
 
     await engine.run_lifecycle()
 
-    mock_redis.get_all_questions.assert_called_with("room_123")
+    mock_redis.get_questions.assert_called_with("room_123")
     mock_redis.publish_room_message.assert_not_called()
 
 @pytest.mark.asyncio
@@ -43,7 +44,7 @@ async def test_complete_successful_lifecycle(
         mock_redis,
         sample_question
 ):
-    mock_redis.get_all_questions.return_value = sample_question
+    mock_redis.get_questions.return_value = sample_question
     mock_redis.get_answers.return_value = {}
     mock_redis.get_players.return_value = []
 
@@ -59,18 +60,23 @@ async def test_complete_successful_lifecycle(
 
     for idx, q in enumerate(sample_question):
         mock_redis.publish_room_message.assert_any_call(
-            engine.room_id, {"type": "question", "question": q, "index": idx}
+            engine.room_id,
+            {
+                "type": "question",
+                "question": q.model_dump(mode="json"),
+                "index": idx,
+            }
         )
 
 @pytest.mark.asyncio
 async def test_process_answers_with_linear_score_decay(engine, mock_redis):
-    question = {"correct_option": "A"}
+    question = Question(id="q1", question_text="Question 1", options=["A", "B", "C", "D"], correct_option="A")
     question_idx = 0
 
     mock_redis.get_answers.return_value = {
-        "p1": {"answer": "A", "ts": 100.0},
-        "p2": {"answer": "A", "ts": 114.0},
-        "p3": {"answer": "B", "ts": 101.0},
+        "p1": RoomAnswer(answer="A", timestamp=100.0),
+        "p2": RoomAnswer(answer="A", timestamp=114.0),
+        "p3": RoomAnswer(answer="B", timestamp=101.0)
     }
 
     with patch("time.time", return_value=100.0):
@@ -95,10 +101,13 @@ async def test_wait_for_answers_exits_early_on_event_signal(engine, events_map):
 
 @pytest.mark.asyncio
 async def test_lifecycle_exception_sets_room_status_to_error(engine, mock_redis):
-    mock_redis.get_all_questions.side_effect = RuntimeError()
+    mock_redis.get_questions.side_effect = RuntimeError()
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
         with pytest.raises(RuntimeError):
             await engine.run_lifecycle()
 
-            mock_redis.update_room_status.assert_called_with(engine.room_id, "ERROR")
+            mock_redis.update_room_status.assert_called_with(
+                engine.room_id,
+                status=RoomStatus.ERROR,
+            )

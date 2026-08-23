@@ -1,10 +1,29 @@
 from pydantic import BaseModel
-from typing import Optional
-
-class Player(BaseModel):
-    player_id: str
-    name: str
-    current_answer: Optional[str] = None
+from enum import StrEnum
 
 class RoomCreateResponse(BaseModel):
     room_id: str
+
+class RoomStatus(StrEnum):
+    CREATED = "CREATED"
+    STARTED = "STARTED"
+    CANCELLED = "CANCELLED"
+    FINISHED = "FINISHED"
+    ERROR = "ERROR"
+
+class Room(BaseModel):
+    room_id: str
+    owner_id: str
+    quiz_id: str
+    current_question_index: int
+    status: RoomStatus
+
+class Question(BaseModel):
+    id: str
+    question_text: str
+    options: list[str]
+    correct_option: str
+
+class RoomAnswer(BaseModel):
+    answer: str
+    timestamp: float

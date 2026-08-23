@@ -1,4 +1,4 @@
-from app.services.redis_client import RedisClient
+from app.services.redis.redis_client import RedisClient
 from app.services.room_manager import RoomManager
 from app.services.connection_manager import ConnectionManager
 from fastapi import Depends, HTTPException

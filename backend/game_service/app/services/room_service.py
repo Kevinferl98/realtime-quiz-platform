@@ -1,9 +1,10 @@
 import random
-from app.services.redis_client import RedisClient
+from app.services.redis.redis_client import RedisClient
 from app.schemas.multiplayer import RoomCreateResponse
 from app.services.quiz_grpc_client import QuizServiceClient
 from my_observability import get_logger
 from app.exception import QuizEmptyError, CreateRoomError
+from app.schemas.multiplayer import Question
 
 ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 ROOM_TTL_SECONDS = 3600
@@ -16,7 +17,10 @@ def generate_room_code(length: int = 5) -> str:
 
 async def create_room(redis: RedisClient, quiz_id: str, user_id: str, quiz_client: QuizServiceClient) -> RoomCreateResponse:
     quiz_data = await quiz_client.get_quiz_by_id(quiz_id)
-    questions = quiz_data.get("questions", [])
+    questions = [
+        Question.model_validate(question)
+        for question in quiz_data.get("questions", [])
+    ]
 
     if not questions:
         raise QuizEmptyError()

@@ -2,7 +2,7 @@ import asyncio
 from contextlib import suppress
 from typing import Dict, Optional
 from fastapi import WebSocket
-from app.services.redis_client import RedisClient
+from app.services.redis.redis_client import RedisClient
 from app.services.connection_manager import ConnectionManager
 from app.services.quiz_engine import QuizEngine
 from my_observability import get_logger
@@ -67,7 +67,7 @@ class RoomManager:
             await self._redis.publish_room_message(
                 room_id, {
                     "type": "player_left",
-                    "players": [p["name"] for p in players]
+                    "players": [p.name for p in players]
                 }
             )
 

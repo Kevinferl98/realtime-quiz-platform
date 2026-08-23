@@ -2,8 +2,9 @@ import asyncio
 import time
 from contextlib import suppress
 from typing import Dict
-from app.services.redis_client import RedisClient
+from app.services.redis.redis_client import RedisClient
 from my_observability import get_logger
+from app.schemas.multiplayer import Question, RoomStatus
 
 logger = get_logger(__name__)
 
@@ -23,7 +24,7 @@ class QuizEngine:
         """Executes the complete quiz loop from question progression to the final leaderboard."""
         logger.info("Quiz lifecycle started", room_id=self.room_id)
         try:
-            questions = await self._redis.get_all_questions(self.room_id)
+            questions = await self._redis.get_questions(self.room_id)
             if not questions:
                 logger.warning("No questions found for room", room_id=self.room_id)
                 return
@@ -31,7 +32,7 @@ class QuizEngine:
             # Initialize room state as started before entering the question loop.
             await self._redis.update_room_status(
                 self.room_id,
-                status="STARTED",
+                status=RoomStatus.STARTED,
             )
 
             for idx, question in enumerate(questions):
@@ -41,7 +42,11 @@ class QuizEngine:
 
                 await self._redis.publish_room_message(
                     self.room_id,
-                    {"type": "question", "question": question, "index": idx}
+                    {
+                        "type": "question",
+                        "question": question.model_dump(mode="json"),
+                        "index": idx,
+                    }
                 )
 
                 question_start = time.time()
@@ -57,14 +62,14 @@ class QuizEngine:
                 if not is_last:
                     await asyncio.sleep(LEADERBOARD_DURATION)
 
-            await self._redis.update_room_status(self.room_id, status="FINISHED")
+            await self._redis.update_room_status(self.room_id, status=RoomStatus.FINISHED)
 
         except asyncio.CancelledError:
             logger.info("Quiz execution explicitly cancelled", room_id=self.room_id)
             with suppress(Exception):
                 await self._redis.update_room_status(
                     self.room_id,
-                    status="CANCELLED",
+                    status=RoomStatus.CANCELLED,
                 )
             raise
         except Exception as e:
@@ -72,7 +77,7 @@ class QuizEngine:
             with suppress(Exception):
                 await self._redis.update_room_status(
                     self.room_id,
-                    status="ERROR",
+                    status=RoomStatus.ERROR,
                 )
             raise
 
@@ -97,20 +102,20 @@ class QuizEngine:
 
         self._events_map.pop(event_key, None)
 
-    async def _process_answers(self, question: dict, question_index: int, start_time: float) -> None:
+    async def _process_answers(self, question: Question, question_index: int, start_time: float) -> None:
         """Evaluates answers from Redis and increments scores with time-based decay logic."""
         answers = await self._redis.get_answers(self.room_id, question_index)
 
         await self._redis.publish_room_message(
             self.room_id,
-            {"type": "answer_result", "correct_answer": question["correct_option"]}
+            {"type": "answer_result", "correct_answer": question.correct_option}
         )
 
-        correct_option = question["correct_option"]
+        correct_option = question.correct_option
         for player_id, data in answers.items():
-            if data["answer"] == correct_option:
+            if data.answer == correct_option:
                 # Linear point scaling: faster answers earn closer to max_points.
-                response_time = max(0.0, data["ts"] - start_time)
+                response_time = max(0.0, data.timestamp - start_time)
                 time_ratio = min(response_time / QUESTION_DURATION, 1.0)
 
                 max_points, min_points = 1000, 200
@@ -127,8 +132,8 @@ class QuizEngine:
 
         leaderboard = [
             {
-                "name": player["name"],
-                "score": player["score"],
+                "name": player.name,
+                "score": player.score,
             }
             for player in leaderboard
         ]
