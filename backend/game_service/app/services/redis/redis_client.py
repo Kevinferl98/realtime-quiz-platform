@@ -1,6 +1,5 @@
 import redis.asyncio as redis
 import json
-import uuid
 import time
 from app.schemas.multiplayer import Room, RoomAnswer, Question, RoomStatus
 from app.models.multiplayer import Player, LeaderboardEntry
@@ -20,8 +19,8 @@ DEFAULT_LEADERBOARD_LIMIT = 5
 class RedisClient:
     def __init__(self):
         self.redis = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
-        self._locks: dict[str, str] = {}
         self._create_room_script = self._load_script("create_room.lua")
+        self._start_quiz_script = self._load_script("start_quiz.lua")
 
     def _load_script(self, filename: str):
         script_path = SCRIPTS_DIR / filename
@@ -80,6 +79,12 @@ class RedisClient:
     async def get_room(self, room_id: str) -> Room | None:
         data = await self.redis.hgetall(RedisKeys.room(room_id))
         return Room.model_validate(data) if data else None
+
+    async def try_start_room(self, room_id: str) -> bool:
+        result = await self._start_quiz_script(
+            keys=[RedisKeys.room(room_id)]
+        )
+        return bool(result)
     
     async def get_questions(self, room_id: str) -> list[Question] | None:
         data = await self.redis.get(RedisKeys.questions(room_id))
@@ -243,32 +248,3 @@ class RedisClient:
                     await handler(room_id, data)
                 except Exception as e:
                     logger.warning(f"Error processing pubsub message: {e}")
-    
-    async def acquire_lock(self, key: str, ttl: int = 60) -> bool:
-        lock_value = str(uuid.uuid4())
-        acquired = await self.redis.set(key, lock_value, nx=True, ex=ttl)
-        if acquired:
-            self._locks[key] = lock_value
-            logger.debug(f"Lock acquired: {key}")
-            return True
-        return False
-    
-    async def release_lock(self, key: str) -> bool:
-        lock_value = self._locks.get(key)
-        if not lock_value:
-            logger.warning(f"Trying to release lock not owned: {key}")
-            return False
-        
-        lua = """
-        if redis.call("GET", KEYS[1]) == ARGV[1] then
-            return redis.call("DEL", KEYS[1])
-        else
-            return 0
-        end
-        """
-        result = await self.redis.eval(lua, 1, key, lock_value)
-        if result:
-            logger.debug(f"Lock released: {key}")
-            return True
-        logger.warning(f"Lock not released, value mismatch: {key}")
-        return False

@@ -27,6 +27,7 @@ def redis_client():
 
     client.redis.eval.return_value = 1
     client._create_room_script = AsyncMock(return_value=1)
+    client._start_quiz_script = AsyncMock(return_value=1)
 
     return client
 
@@ -203,25 +204,6 @@ async def test_subscribe_rooms(redis_client):
     handler.assert_called_once_with("123", {"type":"msg"})
 
 @pytest.mark.asyncio
-async def test_locks(redis_client):
-    redis_client.redis.set.return_value = True
-    acquired = await redis_client.acquire_lock("key1")
-    assert acquired is True
-
-    redis_client.redis.set.return_value = False
-    acquired = await redis_client.acquire_lock("key1")
-    assert acquired is False
-
-    redis_client._locks["key1"] = "val"
-    redis_client.redis.eval.return_value = 1
-    released = await redis_client.release_lock("key1")
-    assert released is True
-
-    redis_client._locks.pop("key1")
-    released = await redis_client.release_lock("key1")
-    assert released is False
-
-@pytest.mark.asyncio
 async def test_save_answer(redis_client, redis_pipeline):
     room_id = "123"
     q_index = 0
@@ -350,3 +332,19 @@ async def test_get_leaderboard_excludes_internal_room_marker(redis_client, redis
 
     redis_pipeline.hget.assert_called_once_with("room:123:players", "p1")
     assert result == [LeaderboardEntry(player_id="p1", name="John", score=100)]
+
+@pytest.mark.asyncio
+async def test_try_start_room(redis_client):
+    result = await redis_client.try_start_room(
+        room_id="123",
+    )
+
+    assert result is True
+
+    redis_client._start_quiz_script.assert_awaited_once()
+
+    call = redis_client._start_quiz_script.await_args
+
+    assert call.kwargs["keys"] == [
+        "room:123"
+    ]
