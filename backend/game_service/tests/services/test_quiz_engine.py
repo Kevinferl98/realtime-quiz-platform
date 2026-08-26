@@ -24,7 +24,6 @@ def sample_question():
 def engine(mock_redis, events_map):
     return QuizEngine(
         room_id="room_123",
-        lock_key="quiz_lock:room_123",
         redis_client=mock_redis,
         events_map=events_map
     )
@@ -55,7 +54,7 @@ async def test_complete_successful_lifecycle(
         assert mock_wait.call_count == len(sample_question)
         assert mock_sleep.call_count > 0
 
-    assert mock_redis.update_room_status.call_count == 2
+    assert mock_redis.update_room_status.call_count == 1
     assert mock_redis.update_room_progress.call_count == 2
 
     for idx, q in enumerate(sample_question):

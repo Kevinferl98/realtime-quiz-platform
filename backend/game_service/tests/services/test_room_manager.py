@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch, create_autospec
 from fastapi import WebSocket
 from app.services.connection_manager import ConnectionManager
 from app.services.redis.redis_client import RedisClient
-from app.services.room_manager import QUIZ_LOCK_TTL, RoomManager
+from app.services.room_manager import RoomManager
 from app.models.multiplayer import Player
 
 @pytest.fixture
 def mock_redis():
     client = create_autospec(RedisClient, instance=True)
-    client.acquire_lock.return_value = True
+    client.try_start_room.return_value = True
     client.get_players.return_value=[Player(player_id="1", name="Player1"), Player(player_id="2", name="Player2")]
     client.count_answers.return_value=2
     return client
@@ -102,16 +102,16 @@ async def test_disconnect_empty_room_triggers_cleanup(room_manager, mock_websock
     room_manager._cleanup_room_resources.assert_awaited_once_with("room_empty")
 
 @pytest.mark.asyncio
-async def test_start_quiz_lock_already_acquired_on_other_instance(room_manager):
-    room_manager._redis.acquire_lock.return_value = False
+async def test_start_quiz_does_not_start_when_room_cannot_be_transitioned(room_manager):
+    room_manager._redis.try_start_room.return_value = False
 
     await room_manager.start_quiz("room_2")
 
     assert "room_2" not in room_manager._quiz_tasks
-    room_manager._redis.release_lock.assert_not_awaited()
+    room_manager._redis.try_start_room.assert_awaited_once_with("room_2")
 
 @pytest.mark.asyncio
-async def test_start_quiz_already_running_locally_releases_lock(room_manager):
+async def test_start_quiz_does_not_create_duplicate_local_task(room_manager):
     blocker = asyncio.Event()
 
     async def never_ending():
@@ -121,34 +121,31 @@ async def test_start_quiz_already_running_locally_releases_lock(room_manager):
 
     await room_manager.start_quiz("room_3")
 
-    room_manager._redis.release_lock.assert_awaited_once_with("quiz_lock:room_3")
+    room_manager._redis.try_start_room.assert_awaited_once_with("room_3")
 
 @pytest.mark.asyncio
 @patch("app.services.room_manager.QuizEngine")
 async def test_start_quiz_success_spawns_background_task(mock_quiz_engine_cls, room_manager):
     mock_engine = mock_quiz_engine_cls.return_value
-    mock_engine.lock_key = "quiz_lock:room_1"
     mock_engine.run_lifecycle = AsyncMock()
 
     await room_manager.start_quiz("room_1")
 
-    room_manager._redis.acquire_lock.assert_awaited_once_with("quiz_lock:room_1", QUIZ_LOCK_TTL)
+    room_manager._redis.try_start_room.assert_awaited_once_with("room_1")
     mock_quiz_engine_cls.assert_called_once_with(
-        "room_1", "quiz_lock:room_1", room_manager._redis, room_manager._answer_events
+        "room_1", room_manager._redis, room_manager._answer_events
     )
     assert "room_1" in room_manager._quiz_tasks
 
     await asyncio.sleep(0)
 
     mock_engine.run_lifecycle.assert_awaited_once()
-    room_manager._redis.release_lock.assert_awaited_once_with("quiz_lock:room_1")
     assert "room_1" not in room_manager._quiz_tasks
 
 @pytest.mark.asyncio
-async def test_wrapped_quiz_runner_releases_lock_and_removes_task_on_error(room_manager):
+async def test_wrapped_quiz_runner_removes_task_on_error(room_manager):
     room_id = "room_err"
     engine = MagicMock()
-    engine.lock_key = "quiz_lock:room_err"
     engine.run_lifecycle = AsyncMock(side_effect=RuntimeError("boom"))
     room_manager._quiz_tasks[room_id] = asyncio.current_task()
 
@@ -156,7 +153,6 @@ async def test_wrapped_quiz_runner_releases_lock_and_removes_task_on_error(room_
         await room_manager._wrapped_quiz_runner(room_id, engine)
 
     assert room_id not in room_manager._quiz_tasks
-    room_manager._redis.release_lock.assert_awaited_once_with("quiz_lock:room_err")
 
 @pytest.mark.asyncio
 async def test_cleanup_room_resources_cancels_existing_task(room_manager):

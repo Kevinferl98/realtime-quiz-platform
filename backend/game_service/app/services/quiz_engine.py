@@ -14,9 +14,8 @@ ANSWER_REVEAL_DURATION = 4
 
 class QuizEngine:
     """Orchestrates the state, timing, and score calculations of a quiz game loop."""
-    def __init__(self, room_id: str, lock_key: str, redis_client: RedisClient, events_map: Dict[str, asyncio.Event]):
+    def __init__(self, room_id: str, redis_client: RedisClient, events_map: Dict[str, asyncio.Event]):
         self.room_id = room_id
-        self.lock_key = lock_key
         self._redis = redis_client
         self._events_map = events_map
 
@@ -28,12 +27,6 @@ class QuizEngine:
             if not questions:
                 logger.warning("No questions found for room", room_id=self.room_id)
                 return
-
-            # Initialize room state as started before entering the question loop.
-            await self._redis.update_room_status(
-                self.room_id,
-                status=RoomStatus.STARTED,
-            )
 
             for idx, question in enumerate(questions):
                 is_last = idx == len(questions) - 1

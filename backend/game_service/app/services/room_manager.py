@@ -9,8 +9,6 @@ from my_observability import get_logger
 
 logger = get_logger(__name__)
 
-QUIZ_LOCK_TTL = 60
-
 class RoomManager:
     """Coordinates real-time quiz rooms by binding networking, distributed state, and game loops."""
     def __init__(self, redis_client: RedisClient, connection_manager: ConnectionManager) -> None:
@@ -78,29 +76,22 @@ class RoomManager:
         self._ws_to_player[websocket] = player_id
 
     async def start_quiz(self, room_id: str) -> None:
-        """Acquires a distributed lock and spawns a background game loop for the room."""
-        lock_key = f"quiz_lock:{room_id}"
-        acquired = await self._redis.acquire_lock(lock_key, QUIZ_LOCK_TTL)
-        if not acquired:
-            logger.warning("Cannot start quiz: lock already acquired by another instance", room_id=room_id)
+        """Atomically starts the room and spawns its background game loop."""
+        started = await self._redis.try_start_room(room_id)
+        if not started:
+            logger.warning("Room already started or not found", room_id=room_id)
             return
 
-        if room_id in self._quiz_tasks:
-            await self._redis.release_lock(lock_key)
-            logger.warning("Quiz for this room is already running locally", room_id=room_id)
-            return
-
-        engine = QuizEngine(room_id, lock_key, self._redis, self._answer_events)
+        engine = QuizEngine(room_id, self._redis, self._answer_events)
         task = asyncio.create_task(self._wrapped_quiz_runner(room_id, engine))
         self._quiz_tasks[room_id] = task
 
     async def _wrapped_quiz_runner(self, room_id: str, engine: QuizEngine) -> None:
-        """Safely executes the quiz lifecycle and guarantees lock release on termination."""
+        """Safely executes the quiz lifecycle and removes the task on termination."""
         try:
             await engine.run_lifecycle()
         finally:
             self._quiz_tasks.pop(room_id, None)
-            await self._redis.release_lock(engine.lock_key)
 
     async def _cleanup_room_resources(self, room_id: str) -> None:
         """Forcefully halts and unregisters game loops linked to a dead room ID."""
