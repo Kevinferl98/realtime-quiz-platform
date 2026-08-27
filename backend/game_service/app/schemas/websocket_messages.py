@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Annotated, Literal, Union
+from app.schemas.multiplayer import Question
 
 # FE -> BE
 class JoinAction(BaseModel):
@@ -35,9 +36,27 @@ class PlayerLeftMessage(BaseModel):
 class AnswerSubmittedMessage(BaseModel):
     type: Literal["answer_submitted"] = "answer_submitted"
     current_question_index: int
-    player_id: str
 
 class ErrorMessage(BaseModel):
     type: Literal["error"] = "error"
     code: str
     message: str
+
+class QuestionMessage(BaseModel):
+    type: Literal["question"] = "question"
+    question: Question
+    index: int
+
+class AnswerResultMessage(BaseModel):
+    type: Literal["answer_result"] = "answer_result"
+    correct_answer: str
+
+class LeaderboardEntry(BaseModel):
+    name: str
+    score: int
+
+class LeaderboardMessage(BaseModel):
+    type: Literal["leaderboard"] = "leaderboard"
+    final: bool = False
+    leaderboard: list[LeaderboardEntry]
+    show_for: int = Field(default=8)

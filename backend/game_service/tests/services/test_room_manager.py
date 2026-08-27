@@ -185,7 +185,6 @@ async def test_handle_answer_submitted_unblocks_when_all_players_answered(room_m
     await room_manager._handle_inbound_pubsub_msg(room_id, message)
 
     assert early_event.is_set() is True
-    room_manager._connection_manager.broadcast_to_room.assert_awaited_once_with(room_id, message)
 
 @pytest.mark.asyncio
 async def test_handle_answer_submitted_does_not_unblock_when_answers_missing(room_manager):

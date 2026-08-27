@@ -5,6 +5,12 @@ from typing import Dict
 from app.services.redis.redis_client import RedisClient
 from my_observability import get_logger
 from app.schemas.multiplayer import Question, RoomStatus
+from app.schemas.websocket_messages import (
+    QuestionMessage,
+    AnswerResultMessage,
+    LeaderboardEntry,
+    LeaderboardMessage
+)
 
 logger = get_logger(__name__)
 
@@ -33,13 +39,13 @@ class QuizEngine:
 
                 await self._redis.update_room_progress(self.room_id, index=idx)
 
+                msg_question = QuestionMessage(
+                    question=question,
+                    index=idx
+                )
                 await self._redis.publish_room_message(
                     self.room_id,
-                    {
-                        "type": "question",
-                        "question": question.model_dump(mode="json"),
-                        "index": idx,
-                    }
+                    msg_question.model_dump()
                 )
 
                 question_start = time.time()
@@ -99,9 +105,10 @@ class QuizEngine:
         """Evaluates answers from Redis and increments scores with time-based decay logic."""
         answers = await self._redis.get_answers(self.room_id, question_index)
 
+        msg_answer = AnswerResultMessage(correct_answer=question.correct_option)
         await self._redis.publish_room_message(
             self.room_id,
-            {"type": "answer_result", "correct_answer": question.correct_option}
+            msg_answer.model_dump(),
         )
 
         correct_option = question.correct_option
@@ -121,22 +128,23 @@ class QuizEngine:
 
     async def _publish_leaderboard(self, final: bool = False) -> None:
         """Fetches current scores and publishes the top 5 players to the room channel."""
-        leaderboard = await self._redis.get_leaderboard(self.room_id, 5)
+        raw_leaderboard = await self._redis.get_leaderboard(self.room_id, 5)
 
-        leaderboard = [
-            {
-                "name": player.name,
-                "score": player.score,
-            }
-            for player in leaderboard
+        leaderboard_entries = [
+            LeaderboardEntry(
+                name=player.name,
+                score=player.score
+            )
+            for player in raw_leaderboard
         ]
+
+        msg_leaderboard = LeaderboardMessage(
+            final=final,
+            leaderboard=leaderboard_entries,
+            show_for=LEADERBOARD_DURATION
+        )
 
         await self._redis.publish_room_message(
             self.room_id,
-            {
-                "type": "leaderboard",
-                "final": final,
-                "leaderboard": leaderboard,
-                "show_for": LEADERBOARD_DURATION,
-            },
+            msg_leaderboard.model_dump()
         )
