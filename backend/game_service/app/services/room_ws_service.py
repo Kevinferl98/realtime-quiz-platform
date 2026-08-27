@@ -1,6 +1,7 @@
 import uuid
 from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
+from pydantic import ValidationError, TypeAdapter, BaseModel
 from app.models.multiplayer import Player
 from app.domain.room_session import RoomSession
 from my_observability import get_logger
@@ -8,8 +9,20 @@ from app.core.security import authenticate_token_string
 from app.services.redis.redis_client import RedisClient
 from app.services.room_manager import RoomManager
 from app.schemas.multiplayer import Room, RoomStatus
+from app.schemas.websocket_messages import (
+    ClientMessage,
+    JoinAction,
+    StartAction,
+    AnswerAction,
+    ErrorMessage,
+    RoleMessage,
+    PlayerJoinedMessage,
+    AnswerSubmittedMessage
+)
 
 logger = get_logger(__name__)
+
+client_message_adapter = TypeAdapter(ClientMessage)
 
 class RoomWebSocketService:
     """Manages the lifecycle of individual WebSocket connections, parsing inbound user actions."""
@@ -42,21 +55,19 @@ class RoomWebSocketService:
 
         room = await self.redis.get_room(room_id)
         if not room:
-            await websocket.send_json({
-                "type": "error",
-                "code": "ROOM_NOT_FOUND",
-                "message": "Room not found"
-            })
+            await self._send_message(
+                websocket,
+                ErrorMessage(code="ROOM_NOT_FOUND", message="Room not found")
+            )
             await websocket.close()
             raise Exception("Room not found")
 
         # Prevent late-joins to keep quiz state and scoring synchronization coherent.
         if room.status != RoomStatus.CREATED:
-            await websocket.send_json({
-                "type": "error",
-                "code": "ROOM_ALREADY_STARTED",
-                "message": "Room already started"
-            })
+            await self._send_message(
+                websocket,
+                ErrorMessage(code="ROOM_ALREADY_STARTED", message="Room already started")
+            )
             await websocket.close()
             raise Exception("Room already started")
 
@@ -69,11 +80,10 @@ class RoomWebSocketService:
             user_payload=user_payload
         )
 
-        await websocket.send_json({
-            "type": "role",
-            "role": session.role,
-            "player_id": session.player_id
-        })
+        await self._send_message(
+            websocket,
+            RoleMessage(role=session.role, player_id=session.player_id)
+        )
 
         # Anonymous players are deferred from the Redis roster until they explicitly pick a name.
         if session.is_host or session.is_authenticated:
@@ -82,69 +92,64 @@ class RoomWebSocketService:
                 Player(player_id=session.player_id, name=session.username)
             )
         
-        await self._broadcast_players(room_id, "player_joined")
+        await self._broadcast_player_joined(room_id)
 
         return session
 
     async def _event_loop(self, websocket: WebSocket, room_id: str, session: RoomSession) -> None:
         """Continuously streams incoming JSON frames and routes them to explicit action handlers."""
         async for data in websocket.iter_json():
-            action = data.get("type")
+            try:
+                message: ClientMessage = client_message_adapter.validate_python(data)
 
-            if action == "join":
-                await self._handle_join(websocket, room_id, session, data)
-            elif action == "start":
-                await self._handle_start(websocket, room_id, session)
-            elif action == "answer":
-                await self._handle_answer(room_id, session, data)
-            else:
-                await websocket.send_json({
-                    "type": "error",
-                    "code": "UNKNOWN_ACTION",
-                    "message": "unknown action"
-                })
+                match message:
+                    case JoinAction():
+                        await self._handle_join(room_id, session, message)
+                    case StartAction():
+                        await self._handle_start(websocket, room_id, session)
+                    case AnswerAction():
+                        await self._handle_answer(room_id, session, message)
+            except ValidationError as e:
+                logger.warning(f"Invalid WebSocket payload received in room {room_id}: {e}")
+                await self._send_message(
+                    websocket,
+                    ErrorMessage(
+                        code="INVALID_PAYLOAD",
+                        message="Invalid message schema or payload content"
+                    )
+                )
     
     async def handle_disconnect(self, websocket: WebSocket, room_id: str) -> None:
         """Cleans up the localized active session inside RoomManager when the socket drops."""
         await self.manager.disconnect(room_id, websocket)
 
-    async def _handle_join(self, websocket: WebSocket, room_id: str, session: RoomSession, data: dict) -> None:
+    async def _handle_join(self, room_id: str, session: RoomSession, data: JoinAction) -> None:
         """Finalizes the profile registration for non-authenticated guest players."""
         if session.is_authenticated:
             return
-        
-        name = data.get("name")
-        if not name:
-            await websocket.send_json({
-                "type": "error",
-                "message": "Name required"
-            })
-            return
 
-        session.set_username(name)
+        session.set_username(data.name)
 
         await self.redis.add_player(
             room_id,
-            Player(player_id=session.player_id, name=name)
+            Player(player_id=session.player_id, name=data.name)
         )
 
-        await self._broadcast_players(room_id, "player_joined")
+        await self._broadcast_player_joined(room_id)
 
     async def _handle_start(self, websocket: WebSocket, room_id: str, session: RoomSession) -> None:
         """Triggers the quiz state transition if the requesting session is the designated host."""
         if not session.is_host:
-            await websocket.send_json({
-                "type": "error",
-                "message": "Only host can start the quiz"
-            })
+            await self._send_message(
+                websocket,
+                ErrorMessage(code="FORBIDDEN", message="Only host can start the quiz")
+            )
             return
         
         await self.manager.start_quiz(room_id)
 
-    async def _handle_answer(self, room_id: str, session: RoomSession, data: dict) -> None:
+    async def _handle_answer(self, room_id: str, session: RoomSession, data: AnswerAction) -> None:
         """Saves a player submission and notifies the cluster for real-time early-cutoff logic."""
-        answer = data.get("answer")
-
         room_meta = await self.redis.get_room(room_id)
         if not room_meta:
             return
@@ -155,15 +160,15 @@ class RoomWebSocketService:
             room_id,
             question_index,
             session.player_id,
-            answer
+            data.answer
         )
 
         # Broadcast via Pub/Sub to allow any horizontal application instance to process the cutoff check.
-        await self.redis.publish_room_message(room_id, {
-            "type": "answer_submitted",
-            "current_question_index": question_index,
-            "player_id": session.player_id,
-        })
+        msg = AnswerSubmittedMessage(
+            current_question_index=question_index,
+            player_id=session.player_id,
+        )
+        await self.redis.publish_room_message(room_id, msg.model_dump())
     
     def _authenticate(self, token: str | None) -> dict[str, Any] | None:
         """Verifies JWT claims against core authentication systems, safely swallowing errors."""
@@ -188,11 +193,16 @@ class RoomWebSocketService:
         """Evaluates whether the caller maps directly to the unique creator of the room registry."""
         return "host" if player_id == room.owner_id else "player"
     
-    async def _broadcast_players(self, room_id: str, event_type: str) -> None:
+    async def _broadcast_player_joined(self, room_id: str) -> None:
         """Queries the complete room roster and distributes it to the cluster broadcast channel."""
         players = await self.redis.get_players(room_id)
 
-        await self.redis.publish_room_message(room_id, {
-            "type": event_type,
-            "players": [p.name for p in players]
-        })
+        msg = PlayerJoinedMessage(
+            players=[p.name for p in players if p.name]
+        )
+
+        await self.redis.publish_room_message(room_id, msg.model_dump())
+
+    async def _send_message(self, websocket: WebSocket, message: BaseModel) -> None:
+        """Helper to send a strongly typed Pydantic message model over the socket."""
+        await websocket.send_json(message.model_dump())

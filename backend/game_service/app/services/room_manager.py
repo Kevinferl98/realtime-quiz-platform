@@ -2,10 +2,12 @@ import asyncio
 from contextlib import suppress
 from typing import Dict, Optional
 from fastapi import WebSocket
+from pydantic import ValidationError
 from app.services.redis.redis_client import RedisClient
 from app.services.connection_manager import ConnectionManager
 from app.services.quiz_engine import QuizEngine
 from my_observability import get_logger
+from app.schemas.websocket_messages import PlayerLeftMessage, AnswerSubmittedMessage
 
 logger = get_logger(__name__)
 
@@ -62,11 +64,12 @@ class RoomManager:
         if player_id:
             await self._redis.remove_player(room_id, player_id)
             players = await self._redis.get_players(room_id)
+            msg = PlayerLeftMessage(
+                players=[p.name for p in players if p.name]
+            )
             await self._redis.publish_room_message(
-                room_id, {
-                    "type": "player_left",
-                    "players": [p.name for p in players]
-                }
+                room_id,
+                msg.model_dump(),
             )
 
         logger.debug("WebSocket source disconnected and deallocated", room_id=room_id)
@@ -109,16 +112,21 @@ class RoomManager:
     async def _handle_inbound_pubsub_msg(self, room_id: str, message: dict) -> None:
         """Processes cross-process notifications and dispatches payloads to local WebSockets."""
         if message.get("type") == "answer_submitted":
-            q_idx = message.get("current_question_index")
-            event_key = f"{room_id}:{q_idx}"
+            try:
+                parsed_msg = AnswerSubmittedMessage.model_validate(message)
+                q_idx = parsed_msg.current_question_index
+                event_key = f"{room_id}:{q_idx}"
 
-            # Unblocks the sleeping local QuizEngine instantly if everyone answered early.
-            event = self._answer_events.get(event_key)
-            if event:
-                answers_count = await self._redis.count_answers(room_id, q_idx)
-                players_count = await self._redis.count_players(room_id)
-                if players_count and answers_count >= players_count:
-                    event.set()
+                # Unblocks the sleeping local QuizEngine instantly if everyone answered early.
+                event = self._answer_events.get(event_key)
+                if event:
+                    answers_count = await self._redis.count_answers(room_id, q_idx)
+                    players_count = await self._redis.count_players(room_id)
+                    if players_count and answers_count >= players_count:
+                        event.set()
+            except ValidationError as e:
+                logger.warning(f"Invalid answer_submitted payload in room {room_id}: {e}")
+            return
 
         # Execute local broadcast outside global orchestration locks.
         stale_sockets = await self._connection_manager.broadcast_to_room(room_id, message)

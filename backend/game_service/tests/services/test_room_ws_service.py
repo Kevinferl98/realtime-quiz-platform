@@ -6,6 +6,7 @@ from app.services.room_ws_service import RoomWebSocketService
 from app.domain.room_session import RoomSession
 from app.schemas.multiplayer import Room, RoomStatus
 from app.models.multiplayer import Player
+from app.schemas.websocket_messages import JoinAction, AnswerAction
 
 @pytest.fixture
 def mock_manager() -> RoomManager:
@@ -57,28 +58,12 @@ async def test_handle_join_guest(service, mock_websocket):
         user_payload=None
     )
 
-    data = {"name": "John"}
+    action = JoinAction(type="join", name="John")
 
-    await service._handle_join(mock_websocket, "room1", session, data)
+    await service._handle_join("room1", session, action)
 
     assert session.username == "John"
     service.redis.add_player.assert_called_once()
-
-@pytest.mark.asyncio
-async def test_handle_join_without_name(service, mock_websocket):
-    session = RoomSession(
-        player_id="p1",
-        role="player",
-        username=None,
-        user_payload=None
-    )
-
-    await service._handle_join(mock_websocket, "room1", session, {})
-
-    mock_websocket.send_json.assert_called_with({
-        "type": "error",
-        "message": "Name required"
-    })
 
 @pytest.mark.asyncio
 async def test_start_as_host(service, mock_websocket):
@@ -102,6 +87,7 @@ async def test_start_as_player_fails(service, mock_websocket):
 
     mock_websocket.send_json.assert_called_with({
         "type": "error",
+        "code": "FORBIDDEN",
         "message": "Only host can start the quiz"
     })
 
@@ -119,8 +105,9 @@ async def test_handle_answer(service, mock_redis):
         player_id="p1",
         role="player"
     )
+    action = AnswerAction(type="answer", answer="A")
 
-    await service._handle_answer("room1", session, {"answer": "A"})
+    await service._handle_answer("room1", session, action)
 
     mock_redis.save_answer.assert_called_once_with(
         "room1",
