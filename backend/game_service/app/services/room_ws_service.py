@@ -108,7 +108,7 @@ class RoomWebSocketService:
                     case StartAction():
                         await self._handle_start(websocket, room_id, session)
                     case AnswerAction():
-                        await self._handle_answer(room_id, session, message)
+                        await self._handle_answer(websocket, room_id, session, message)
             except ValidationError as e:
                 logger.warning(f"Invalid WebSocket payload received in room {room_id}: {e}")
                 await self._send_message(
@@ -148,12 +148,19 @@ class RoomWebSocketService:
         
         await self.manager.start_quiz(room_id)
 
-    async def _handle_answer(self, room_id: str, session: RoomSession, data: AnswerAction) -> None:
+    async def _handle_answer(self, websocket: WebSocket, room_id: str, session: RoomSession, data: AnswerAction) -> None:
         """Saves a player submission and notifies the cluster for real-time early-cutoff logic."""
         room_meta = await self.redis.get_room(room_id)
         if not room_meta:
             return
-        
+
+        if room_meta.status != RoomStatus.STARTED:
+            await self._send_message(
+                websocket,
+                ErrorMessage(code="FORBIDDEN", message="The room has not started yet")
+            )
+            return
+
         question_index = room_meta.current_question_index
 
         await self.redis.save_answer(
@@ -165,8 +172,7 @@ class RoomWebSocketService:
 
         # Broadcast via Pub/Sub to allow any horizontal application instance to process the cutoff check.
         msg = AnswerSubmittedMessage(
-            current_question_index=question_index,
-            player_id=session.player_id,
+            current_question_index=question_index
         )
         await self.redis.publish_room_message(room_id, msg.model_dump())
     

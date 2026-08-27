@@ -92,13 +92,13 @@ async def test_start_as_player_fails(service, mock_websocket):
     })
 
 @pytest.mark.asyncio
-async def test_handle_answer(service, mock_redis):
+async def test_handle_answer(service, mock_redis, mock_websocket):
     mock_redis.get_room.return_value = Room(
         room_id="1",
         owner_id="host-id",
         quiz_id="1",
         current_question_index=2,
-        status=RoomStatus.CREATED
+        status=RoomStatus.STARTED
     )
 
     session = RoomSession(
@@ -107,7 +107,7 @@ async def test_handle_answer(service, mock_redis):
     )
     action = AnswerAction(type="answer", answer="A")
 
-    await service._handle_answer("room1", session, action)
+    await service._handle_answer(mock_websocket, "room1", session, action)
 
     mock_redis.save_answer.assert_called_once_with(
         "room1",
