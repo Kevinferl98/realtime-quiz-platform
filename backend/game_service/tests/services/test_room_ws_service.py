@@ -139,3 +139,37 @@ async def test_room_already_started(service, mock_websocket, mock_redis):
         await service._initialize_session(mock_websocket, "room1")
 
     mock_websocket.close.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_handle_answer_when_already_submitted_sends_error_message(service, mock_redis, mock_websocket):
+    mock_redis.get_room.return_value = Room(
+        room_id="room1",
+        owner_id="host-id",
+        quiz_id="1",
+        current_question_index=0,
+        status=RoomStatus.STARTED
+    )
+    mock_redis.save_answer.return_value=False
+
+    session = RoomSession(
+        player_id="p1",
+        role="player"
+    )
+    action = AnswerAction(type="answer", answer="A")
+
+    await service._handle_answer(mock_websocket, "room1", session, action)
+
+    mock_redis.save_answer.assert_called_once_with(
+        "room1",
+        0,
+        "p1",
+        "A"
+    )
+
+    mock_websocket.send_json.assert_called_once_with({
+        "type": "error",
+        "code": "ANSWER_ALREADY_SUBMITTED",
+        "message": "You have already submitted an answer for this question"
+    })
+
+    mock_redis.publish_room_message.assert_not_called()

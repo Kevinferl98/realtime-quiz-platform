@@ -163,12 +163,22 @@ class RoomWebSocketService:
 
         question_index = room_meta.current_question_index
 
-        await self.redis.save_answer(
+        saved = await self.redis.save_answer(
             room_id,
             question_index,
             session.player_id,
             data.answer
         )
+
+        if not saved:
+            await self._send_message(
+                websocket,
+                ErrorMessage(
+                    code="ANSWER_ALREADY_SUBMITTED",
+                    message="You have already submitted an answer for this question"
+                )
+            )
+            return
 
         # Broadcast via Pub/Sub to allow any horizontal application instance to process the cutoff check.
         msg = AnswerSubmittedMessage(

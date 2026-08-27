@@ -216,7 +216,7 @@ async def test_save_answer(redis_client, redis_pipeline):
 
     redis_client.redis.pipeline.assert_called_once_with(transaction=True)
 
-    assert redis_pipeline.hset.call_args == call(
+    assert redis_pipeline.hsetnx.call_args == call(
         "room:123:answers:0",
         "player_1",
         RoomAnswer(answer=answer, timestamp=fixed_time).model_dump_json(),
