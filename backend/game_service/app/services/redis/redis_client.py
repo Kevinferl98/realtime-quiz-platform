@@ -144,18 +144,20 @@ class RedisClient:
             question_index: int,
             player_id: str,
             answer: str
-    ) -> None:
+    ) -> bool:
         answers_key = RedisKeys.answers(room_id, question_index)
         room_answer = RoomAnswer(answer=answer, timestamp=time.time())
 
         async with self.redis.pipeline(transaction=True) as pipe:
-            pipe.hset(
+            pipe.hsetnx(
                 answers_key,
                 player_id,
                 room_answer.model_dump_json()
             )
             pipe.expire(answers_key, 300, nx=True)
-            await pipe.execute()
+            results = await pipe.execute()
+
+        return bool(results[0])
 
     async def get_answers(self, room_id: str, question_index: int) -> dict[str, RoomAnswer]:
         raw =  await self.redis.hgetall(RedisKeys.answers(room_id, question_index))

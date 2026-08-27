@@ -109,6 +109,10 @@ export function useRoomLogic() {
             onError: (code, message) => {
                 alert(message);
 
+                if (code === "ANSWER_ALREADY_SUBMITTED" || code === "FORBIDDEN") {
+                    setSelectedAnswer(null);
+                }
+
                 if (code == "ROOM_NOT_FOUND" || code == "ROOM_ALREADY_STARTED") {
                     setRedirect("/");
                 }
