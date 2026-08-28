@@ -49,7 +49,19 @@ class RoomWebSocketService:
     async def _initialize_session(self, websocket: WebSocket, room_id: str) -> RoomSession:
         """Authenticates the incoming socket connection and evaluates room state requirements."""
         token = websocket.query_params.get("token")
-        user_payload = self._authenticate(token)
+        try:
+            user_payload = self._authenticate(token)
+        except Exception as e:
+            logger.warning(f"Rejecting WS connection for room {room_id}: invalid token ({e})")
+            await self._send_message(
+                websocket,
+                ErrorMessage(
+                    code="UNAUTHORIZED",
+                    message="Invalid or expired token"
+                )
+            )
+            await websocket.close()
+            raise Exception("Invalid or expired token")
 
         player_id, username = self._resolve_identity(user_payload)
 
@@ -187,14 +199,15 @@ class RoomWebSocketService:
         await self.redis.publish_room_message(room_id, msg.model_dump())
     
     def _authenticate(self, token: str | None) -> dict[str, Any] | None:
-        """Verifies JWT claims against core authentication systems, safely swallowing errors."""
+        """
+        Verifies JWT claims against core authentication systems.
+        - Returns None if token is omitted (legitimate guest).
+        - Raises Exception if token is provided but invalid/expired.
+        """
         if not token:
             return None
 
-        try:
-            return authenticate_token_string(token)
-        except Exception:
-            return None
+        return authenticate_token_string(token)
     
     def _resolve_identity(self, user_payload: dict[str, Any] | None) -> tuple[Any, Any | None]:
         """Extracts claims from authenticated players or generates a random UUID for guests."""
