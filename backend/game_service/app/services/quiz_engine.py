@@ -48,12 +48,10 @@ class QuizEngine:
                     msg_question.model_dump()
                 )
 
-                question_start = time.time()
-
                 # Suspend execution until all answers are submitted or the timeout expires.
                 await self._wait_for_answers_or_timeout(idx)
 
-                await self._process_answers(question, idx, question_start)
+                await self._process_answers(question, idx)
                 await asyncio.sleep(ANSWER_REVEAL_DURATION)
 
                 await self._publish_leaderboard(final=is_last)
@@ -101,9 +99,10 @@ class QuizEngine:
 
         self._events_map.pop(event_key, None)
 
-    async def _process_answers(self, question: Question, question_index: int, start_time: float) -> None:
+    async def _process_answers(self, question: Question, question_index: int) -> None:
         """Evaluates answers from Redis and increments scores with time-based decay logic."""
         answers = await self._redis.get_answers(self.room_id, question_index)
+        start_time = await self._redis.get_question_start_timestamp(self.room_id)
 
         msg_answer = AnswerResultMessage(correct_answer=question.correct_option)
         await self._redis.publish_room_message(

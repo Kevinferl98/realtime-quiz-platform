@@ -1,6 +1,6 @@
 import pytest
 import json
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, call
 from app.services.redis.redis_client import RedisClient
 from app.schemas.multiplayer import Question, RoomAnswer
 from app.models.multiplayer import Player, LeaderboardEntry
@@ -28,6 +28,7 @@ def redis_client():
     client.redis.eval.return_value = 1
     client._create_room_script = AsyncMock(return_value=1)
     client._start_quiz_script = AsyncMock(return_value=1)
+    client.redis.time = AsyncMock(return_value=(1711000000, 0))
 
     return client
 
@@ -210,16 +211,16 @@ async def test_save_answer(redis_client, redis_pipeline):
     player_id = "player_1"
     answer = "A"
     
-    fixed_time = 1711000000.0
-    with patch("time.time", return_value=fixed_time):
-        await redis_client.save_answer(room_id, q_index, player_id, answer)
+    expected_timestamp = 1711000000.0
+    await redis_client.save_answer(room_id, q_index, player_id, answer)
 
+    redis_client.redis.time.assert_awaited_once()
     redis_client.redis.pipeline.assert_called_once_with(transaction=True)
 
     assert redis_pipeline.hsetnx.call_args == call(
         "room:123:answers:0",
         "player_1",
-        RoomAnswer(answer=answer, timestamp=fixed_time).model_dump_json(),
+        RoomAnswer(answer=answer, timestamp=expected_timestamp).model_dump_json(),
     )
 
     redis_pipeline.expire.assert_called_once_with("room:123:answers:0", 300, nx=True)
