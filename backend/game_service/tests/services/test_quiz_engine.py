@@ -72,15 +72,16 @@ async def test_process_answers_with_linear_score_decay(engine, mock_redis):
     question = Question(id="q1", question_text="Question 1", options=["A", "B", "C", "D"], correct_option="A")
     question_idx = 0
 
+    mock_redis.get_question_start_timestamp.return_value = 100.0
     mock_redis.get_answers.return_value = {
         "p1": RoomAnswer(answer="A", timestamp=100.0),
         "p2": RoomAnswer(answer="A", timestamp=114.0),
         "p3": RoomAnswer(answer="B", timestamp=101.0)
     }
 
-    with patch("time.time", return_value=100.0):
-        await engine._process_answers(question, question_idx, 100.0)
+    await engine._process_answers(question, question_idx)
 
+    mock_redis.get_question_start_timestamp.assert_awaited_once_with(engine.room_id)
     mock_redis.increment_score.assert_any_call(engine.room_id, "p1", 1000)
     mock_redis.increment_score.assert_any_call(engine.room_id, "p2", 200)
 

@@ -1,6 +1,5 @@
 import redis.asyncio as redis
 import json
-import time
 from app.schemas.multiplayer import Room, RoomAnswer, Question, RoomStatus
 from app.models.multiplayer import Player, LeaderboardEntry
 from app.core.config import config
@@ -26,6 +25,10 @@ class RedisClient:
         script_path = SCRIPTS_DIR / filename
         script_content = script_path.read_text(encoding="utf-8")
         return self.redis.register_script(script_content)
+
+    async def _get_redis_timestamp(self) -> float:
+        seconds, microseconds = await self.redis.time()
+        return seconds + (microseconds / 1_000_000)
 
     async def create_room(
             self,
@@ -61,9 +64,14 @@ class RedisClient:
             room_id: str,
             index: int,
     ) -> None:
+        start_timestamp = await self._get_redis_timestamp()
+
         await self.redis.hset(
             RedisKeys.room(room_id),
-            mapping={"current_question_index": index}
+            mapping={
+                "current_question_index": index,
+                "question_start_timestamp": start_timestamp
+            }
         )
 
     async def update_room_status(
@@ -79,6 +87,10 @@ class RedisClient:
     async def get_room(self, room_id: str) -> Room | None:
         data = await self.redis.hgetall(RedisKeys.room(room_id))
         return Room.model_validate(data) if data else None
+
+    async def get_question_start_timestamp(self, room_id: str) -> float | None:
+        val = await self.redis.hget(RedisKeys.room(room_id), "question_start_timestamp")
+        return float(val) if val else None
 
     async def try_start_room(self, room_id: str) -> bool:
         result = await self._start_quiz_script(
@@ -146,7 +158,8 @@ class RedisClient:
             answer: str
     ) -> bool:
         answers_key = RedisKeys.answers(room_id, question_index)
-        room_answer = RoomAnswer(answer=answer, timestamp=time.time())
+        current_timestamp = await self._get_redis_timestamp()
+        room_answer = RoomAnswer(answer=answer, timestamp=current_timestamp)
 
         async with self.redis.pipeline(transaction=True) as pipe:
             pipe.hsetnx(
