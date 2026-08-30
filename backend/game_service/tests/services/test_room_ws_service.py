@@ -216,3 +216,22 @@ async def test_handle_join__when_guest_already_connected__raises_exception_and_c
         ).model_dump()
     )
     mock_websocket.close.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_initialize_session__when_token_payload_missing_sub_claim__raises_exception_and_closes_socket(
+    service, mock_websocket
+):
+    mock_websocket.query_params = {"token": "token-without-sub"}
+    service._authenticate = MagicMock(side_effect=ValueError("Token is missing required 'sub' claim"))
+
+    with pytest.raises(Exception, match="Invalid or expired token"):
+        await service._initialize_session(mock_websocket, "room1")
+
+    service._authenticate.assert_called_once_with("token-without-sub")
+    mock_websocket.send_json.assert_called_once_with(
+        ErrorMessage(
+            code="UNAUTHORIZED",
+            message="Invalid or expired token"
+        ).model_dump()
+    )
+    mock_websocket.close.assert_called_once()
