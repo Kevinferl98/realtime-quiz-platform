@@ -99,10 +99,7 @@ class RoomWebSocketService:
 
         # Anonymous players are deferred from the Redis roster until they explicitly pick a name.
         if session.is_host or session.is_authenticated:
-            await self.redis.add_player(
-                room_id,
-                Player(player_id=session.player_id, name=session.username)
-            )
+            await self._add_player(session, room_id, websocket)
         
         await self._broadcast_player_joined(room_id)
 
@@ -116,7 +113,7 @@ class RoomWebSocketService:
 
                 match message:
                     case JoinAction():
-                        await self._handle_join(room_id, session, message)
+                        await self._handle_join(room_id, session, message, websocket)
                     case StartAction():
                         await self._handle_start(websocket, room_id, session)
                     case AnswerAction():
@@ -135,17 +132,14 @@ class RoomWebSocketService:
         """Cleans up the localized active session inside RoomManager when the socket drops."""
         await self.manager.disconnect(room_id, websocket)
 
-    async def _handle_join(self, room_id: str, session: RoomSession, data: JoinAction) -> None:
+    async def _handle_join(self, room_id: str, session: RoomSession, data: JoinAction, websocket: WebSocket) -> None:
         """Finalizes the profile registration for non-authenticated guest players."""
         if session.is_authenticated:
             return
 
         session.set_username(data.name)
 
-        await self.redis.add_player(
-            room_id,
-            Player(player_id=session.player_id, name=data.name)
-        )
+        await self._add_player(session, room_id, websocket)
 
         await self._broadcast_player_joined(room_id)
 
@@ -235,3 +229,21 @@ class RoomWebSocketService:
     async def _send_message(self, websocket: WebSocket, message: BaseModel) -> None:
         """Helper to send a strongly typed Pydantic message model over the socket."""
         await websocket.send_json(message.model_dump())
+
+    async def _add_player(self, session: RoomSession, room_id: str, websocket: WebSocket) -> None:
+        added = await self.redis.add_player_if_not_exists(
+            room_id,
+            Player(player_id=session.player_id, name=session.username)
+        )
+
+        if not added:
+            logger.warning(f"Blocked duplicate connection attempt for player {session.player_id} in room {room_id}")
+            await self._send_message(
+                websocket,
+                ErrorMessage(
+                    code="PLAYER_ALREADY_CONNECTED",
+                    message="You are already connected to this room from another tab or device"
+                )
+            )
+            await websocket.close()
+            raise Exception("Player already connected")
