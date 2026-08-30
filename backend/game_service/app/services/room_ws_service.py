@@ -201,15 +201,19 @@ class RoomWebSocketService:
         if not token:
             return None
 
-        return authenticate_token_string(token)
+        payload = authenticate_token_string(token)
+        if not payload or not payload.get("sub"):
+            raise ValueError("Token is missing required 'sub' claim")
+
+        return payload
     
     def _resolve_identity(self, user_payload: dict[str, Any] | None) -> tuple[Any, Any | None]:
         """Extracts claims from authenticated players or generates a random UUID for guests."""
         if user_payload:
-            return (
-                user_payload.get("sub"),
-                user_payload.get("preferred_username", "User")
-            )
+            player_id: str = user_payload["sub"]
+            username: str = user_payload["preferred_username"]
+            return player_id, username
+
         return str(uuid.uuid4()), None
     
     def _resolve_role(self, player_id: str, room: Room) -> str:
