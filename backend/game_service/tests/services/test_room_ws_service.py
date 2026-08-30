@@ -6,7 +6,7 @@ from app.services.room_ws_service import RoomWebSocketService
 from app.domain.room_session import RoomSession
 from app.schemas.multiplayer import Room, RoomStatus
 from app.models.multiplayer import Player
-from app.schemas.websocket_messages import JoinAction, AnswerAction
+from app.schemas.websocket_messages import JoinAction, AnswerAction, ErrorMessage
 
 @pytest.fixture
 def mock_manager() -> RoomManager:
@@ -60,10 +60,10 @@ async def test_handle_join_guest(service, mock_websocket):
 
     action = JoinAction(type="join", name="John")
 
-    await service._handle_join("room1", session, action)
+    await service._handle_join("room1", session, action, mock_websocket)
 
     assert session.username == "John"
-    service.redis.add_player.assert_called_once()
+    service.redis.add_player_if_not_exists.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_start_as_host(service, mock_websocket):
@@ -173,3 +173,46 @@ async def test_handle_answer_when_already_submitted_sends_error_message(service,
     })
 
     mock_redis.publish_room_message.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_initialize_session__when_player_already_connected__raises_exception_and_closes_socket(
+        service, mock_websocket, mock_redis
+):
+    mock_redis.add_player_if_not_exists.return_value = False
+    service._resolve_identity = MagicMock(return_value=("host-id", "HostUser"))
+
+    with pytest.raises(Exception, match="Player already connected"):
+        await service._initialize_session(mock_websocket, "room1")
+
+    mock_redis.add_player_if_not_exists.assert_called_once()
+    mock_websocket.send_json.assert_called_with(
+        ErrorMessage(
+            code="PLAYER_ALREADY_CONNECTED",
+            message="You are already connected to this room from another tab or device"
+        ).model_dump()
+    )
+    mock_websocket.close.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_handle_join__when_guest_already_connected__raises_exception_and_closes_socket(
+    service, mock_websocket, mock_redis
+):
+    mock_redis.add_player_if_not_exists.return_value = False
+    session = RoomSession(
+        player_id="guest-uuid-123",
+        role="player",
+        username=None,
+        user_payload=None
+    )
+    action = JoinAction(type="join", name="GuestPlayer")
+
+    with pytest.raises(Exception, match="Player already connected"):
+        await service._handle_join("room1", session, action, mock_websocket)
+
+    mock_websocket.send_json.assert_called_with(
+        ErrorMessage(
+            code="PLAYER_ALREADY_CONNECTED",
+            message="You are already connected to this room from another tab or device"
+        ).model_dump()
+    )
+    mock_websocket.close.assert_called_once()

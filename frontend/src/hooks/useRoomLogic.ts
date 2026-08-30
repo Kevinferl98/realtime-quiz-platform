@@ -113,7 +113,11 @@ export function useRoomLogic() {
                     setSelectedAnswer(null);
                 }
 
-                if (code == "ROOM_NOT_FOUND" || code == "ROOM_ALREADY_STARTED") {
+                if (
+                    code === "ROOM_NOT_FOUND" ||
+                    code === "ROOM_ALREADY_STARTED" ||
+                    code === "PLAYER_ALREADY_CONNECTED"
+                ) {
                     setRedirect("/");
                 }
             }

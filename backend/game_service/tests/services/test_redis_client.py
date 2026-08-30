@@ -28,6 +28,7 @@ def redis_client():
     client.redis.eval.return_value = 1
     client._create_room_script = AsyncMock(return_value=1)
     client._start_quiz_script = AsyncMock(return_value=1)
+    client._add_player_script = AsyncMock(return_value=1)
     client.redis.time = AsyncMock(return_value=(1711000000, 0))
 
     return client
@@ -108,25 +109,24 @@ async def test_get_room_meta(redis_client):
 async def test_add_player(redis_client, redis_pipeline):
     player = Player(player_id="p1", name="John")
 
-    await redis_client.add_player(
+    result = await redis_client.add_player_if_not_exists(
         room_id="123",
         player=player,
     )
 
-    redis_client.redis.pipeline.assert_called_once_with(transaction=True)
+    assert result is True
 
-    assert redis_pipeline.hset.call_args == call(
+    redis_client._add_player_script.assert_awaited_once()
+
+    call = redis_client._add_player_script.await_args
+
+    assert call.kwargs["keys"] == [
         "room:123:players",
-        "p1",
-        "John"
-    )
+        "room:123:scores"
+    ]
 
-    assert redis_pipeline.zadd.call_args == call(
-        "room:123:scores",
-        {"p1": 0},
-    )
-
-    redis_pipeline.execute.assert_awaited_once_with()
+    assert call.kwargs["args"][0] == "p1"
+    assert call.kwargs["args"][1] == "John"
 
 @pytest.mark.asyncio
 async def test_get_players(redis_client):

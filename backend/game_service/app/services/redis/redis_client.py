@@ -20,6 +20,7 @@ class RedisClient:
         self.redis = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
         self._create_room_script = self._load_script("create_room.lua")
         self._start_quiz_script = self._load_script("start_quiz.lua")
+        self._add_player_script = self._load_script("add_player.lua")
 
     def _load_script(self, filename: str):
         script_path = SCRIPTS_DIR / filename
@@ -106,25 +107,20 @@ class RedisClient:
         raw_questions = json.loads(data)
         return [Question.model_validate(question) for question in raw_questions]
 
-    async def add_player(
+    async def add_player_if_not_exists(
             self,
             room_id: str,
             player: Player,
-    ) -> None:
+    ) -> bool:
         players_key = RedisKeys.players(room_id)
         scores_key = RedisKeys.scores(room_id)
 
-        async with self.redis.pipeline(transaction=True) as pipe:
-            pipe.hset(
-                players_key,
-                player.player_id,
-                player.name
-            )
-            pipe.zadd(
-                scores_key,
-                {player.player_id: 0}
-            )
-            await pipe.execute()
+        result = await self._add_player_script(
+            keys=[players_key, scores_key],
+            args=[player.player_id, player.name]
+        )
+
+        return result == 1
 
     async def remove_player(self, room_id: str, player_id: str) -> None:
         players_key = RedisKeys.players(room_id)
