@@ -29,3 +29,7 @@ class RedisKeys:
     @staticmethod
     def room_channels_pattern() -> str:
         return f"{RedisKeys.CHANNEL_PREFIX}*"
+
+    @staticmethod
+    def ticket(ticket_id: str) -> str:
+        return f"ws_ticket:{ticket_id}"

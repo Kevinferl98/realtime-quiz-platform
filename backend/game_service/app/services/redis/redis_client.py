@@ -14,6 +14,7 @@ SCRIPTS_DIR = Path(__file__).parent / "scripts"
 INTERNAL_PLAYER_ID = "__room_meta__"
 DEFAULT_ROOM_TTL = 3600
 DEFAULT_LEADERBOARD_LIMIT = 5
+TICKET_TTL_SECONDS = 10
 
 class RedisClient:
     def __init__(self):
@@ -259,3 +260,10 @@ class RedisClient:
                     await handler(room_id, data)
                 except Exception as e:
                     logger.warning(f"Error processing pubsub message: {e}")
+
+    async def save_ticket(self, ticket_id: str, ticket_data: dict) -> None:
+        await self.redis.setex(
+            RedisKeys.ticket(ticket_id),
+            TICKET_TTL_SECONDS,
+            json.dumps(ticket_data)
+        )
