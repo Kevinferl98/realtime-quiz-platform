@@ -16,9 +16,9 @@ interface RoomSocketHandlers {
 export class RoomSocket {
     private client: WebSocketClient;
 
-    constructor(private readonly roomId: string, private readonly token?: string) {
-        const tokenQuery = token ? `?token=${token}` : "";
-        const url = `${CONFIG.WS_BASE}/rooms/${roomId}${tokenQuery}`;
+    constructor(private readonly roomId: string, private readonly ticket?: string) {
+        const ticketQuery = ticket ? `?ticket=${encodeURIComponent(ticket)}` : "";
+        const url = `${CONFIG.WS_BASE}/rooms/${roomId}${ticketQuery}`;
         this.client = new WebSocketClient(url);
     }
 

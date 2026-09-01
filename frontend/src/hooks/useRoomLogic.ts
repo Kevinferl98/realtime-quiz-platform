@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useContext } from "react";
+import { useEffect, useRef, useState, useContext, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../auth/AuthProvider";
 import { RoomSocket } from "../websocket/roomSocket";
 import { Role, Question, LeaderboardEntry, RoomViewState } from "../types/room";
+import { useGetWSTicketMutation } from "./queries/useGameQueries";
 
 export function useRoomLogic() {
     const { room_id } = useParams();
@@ -31,6 +32,8 @@ export function useRoomLogic() {
 
     const [redirect, setRedirect] = useState<string | null>(null);
 
+    const ticketMutation = useGetWSTicketMutation();
+
     const getViewState = (): RoomViewState => {
         if (!authenticated && !nameSubmitted) return "ENTER_NAME";
         
@@ -43,24 +46,33 @@ export function useRoomLogic() {
         return "WAITING";
     };
 
-    const disconnect = () => {
+    const disconnect = useCallback(() => {
         roomSocketRef.current?.disconnect();
         roomSocketRef.current = null;
-    }
+    }, []);
 
-    const connectRoom = (playerId: string, username?: string) => {
+    const connectRoom = useCallback(async (playerId: string, username?: string) => {
         if (!room_id) {
             return;
         }
 
-        const socket = new RoomSocket(room_id, authenticated ? keycloak.token : undefined);
+        let ticket: string | undefined = undefined;
+
+        if (authenticated) {
+            try {
+                const response = await ticketMutation.mutateAsync(room_id);
+                ticket = response.ticket;
+            } catch (err) {
+                console.error("Failed to acquire WebSocket access ticket:", err);
+                setRedirect("/");
+                return;
+            }
+        }
+
+        const socket = new RoomSocket(room_id, ticket);
         roomSocketRef.current = socket;
         socket.onOpen(() => {
             setConnected(true);
-
-            if (username && role !== "host") {
-                socket.join(username);
-            }
         });
 
         socket.onClose(() => {
@@ -72,8 +84,11 @@ export function useRoomLogic() {
                 setRole(role);
                 playerIdRef.current = playerId;
                 
-                if (authenticated && role !== "host") {
-                    socket.join(keycloak.tokenParsed?.preferred_username as string);
+                if (role !== "host") {
+                    const finalUsername = username || (keycloak.tokenParsed?.preferred_username as string);
+                    if (finalUsername) {
+                        socket.join(finalUsername);
+                    }
                 }
             },
 
@@ -122,7 +137,7 @@ export function useRoomLogic() {
                 }
             }
         });
-    };
+    }, [room_id, authenticated, keycloak.tokenParsed]);
 
     // Timer countdown
     useEffect(() => {
@@ -153,14 +168,17 @@ export function useRoomLogic() {
             const playerId = keycloak.tokenParsed?.sub as string;
             const username = keycloak.tokenParsed?.preferred_username as string;
             playerIdRef.current = playerId;
-            connectRoom(playerId, username);
+
+            connectRoom(playerId, username).catch((err) => {
+                console.error("Error connecting to room:", err);
+            });
             setNameSubmitted(true);
         }
 
         return () => {
             disconnect();
         }
-    }, [authenticated, room_id]);
+    }, [authenticated, room_id, connectRoom, disconnect, keycloak.tokenParsed]);
 
     // Redirect
     useEffect(() => {
