@@ -12,9 +12,6 @@ export function useCreateRoom() {
 
 export function useGetWSTicketMutation() {
     return useMutation({
-        mutationFn: (roomId: string) => gameService.getWSTicket(roomId),
-        onError: (error: any) => {
-            alert(error.message || "Failed to acquire WebSocket access ticket");
-        }
+        mutationFn: (roomId: string) => gameService.getWSTicket(roomId)
     });
 }
