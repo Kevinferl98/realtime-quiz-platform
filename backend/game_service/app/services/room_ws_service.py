@@ -1,11 +1,9 @@
 import uuid
-from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError, TypeAdapter, BaseModel
 from app.models.multiplayer import Player
 from app.domain.room_session import RoomSession
 from my_observability import get_logger
-from app.core.security import authenticate_token_string
 from app.services.redis.redis_client import RedisClient
 from app.services.room_manager import RoomManager
 from app.schemas.multiplayer import Room, RoomStatus
@@ -19,6 +17,7 @@ from app.schemas.websocket_messages import (
     PlayerJoinedMessage,
     AnswerSubmittedMessage
 )
+from app.schemas.auth import WSTicket, AccessTokenPayload
 
 logger = get_logger(__name__)
 
@@ -30,41 +29,58 @@ class RoomWebSocketService:
         self.manager = manager
         self.redis = redis
 
-    async def handle_connection(self, websocket: WebSocket, room_id: str) -> None:
-        """Accepts a connection, establishes the user session, and boots the main event loop."""
-        await websocket.accept()
-        await self.manager.connect(room_id, websocket)
-
+    async def handle_connection(self, websocket: WebSocket, room_id: str, ticket: str | None) -> None:
+        """Accepts a connection, validates the ticket and starts the event loop."""
+        registered = False
         try:
-            session = await self._initialize_session(websocket, room_id)
+            ticket_data = await self._consume_ticket(ticket, room_id)
+            if ticket_data.room_id != room_id:
+                raise ValueError("Ticket not valid for this room")
+
+            await websocket.accept()
+            await self.manager.connect(room_id, websocket)
+            registered = True
+
+            session = await self._initialize_session(websocket, room_id, ticket_data.user_payload, ticket_data.player_id, ticket_data.username)
             await self.manager.register_player_ws(websocket, session.player_id)
             await self._event_loop(websocket, room_id, session)
+        except ValueError as e:
+            logger.warning(f"Rejected WebSocket connection: {e}")
+            await websocket.close()
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected gracefully or timed out for room {room_id}")
         except Exception as e:
             logger.error(f"WebSocket closed with error in room {room_id}: {e}")
         finally:
-            await self.handle_disconnect(websocket, room_id)
+            if registered:
+                await self.handle_disconnect(websocket, room_id)
 
-    async def _initialize_session(self, websocket: WebSocket, room_id: str) -> RoomSession:
-        """Authenticates the incoming socket connection and evaluates room state requirements."""
-        token = websocket.query_params.get("token")
-        try:
-            user_payload = self._authenticate(token)
-        except Exception as e:
-            logger.warning(f"Rejecting WS connection for room {room_id}: invalid token ({e})")
-            await self._send_message(
-                websocket,
-                ErrorMessage(
-                    code="UNAUTHORIZED",
-                    message="Invalid or expired token"
-                )
+    async def _consume_ticket(self, ticket: str | None, room_id: str) -> WSTicket:
+        """Atomically retrieves and deletes the ticket from Redis to prevent replay attacks."""
+        if not ticket:
+            return WSTicket(
+                player_id=str(uuid.uuid4()),
+                username=None,
+                user_payload=None,
+                room_id=room_id
             )
-            await websocket.close()
-            raise Exception("Invalid or expired token")
 
-        player_id, username = self._resolve_identity(user_payload)
+        ticket_data = await self.redis.retrieve_and_delete_ticket(ticket)
+        if not ticket_data:
+            logger.warning(f"Rejecting WS connection: invalid or expired ticket ({ticket})")
+            raise ValueError("Invalid or expired ticket")
 
+        return ticket_data
+
+    async def _initialize_session(
+            self,
+            websocket: WebSocket,
+            room_id: str,
+            user_payload: AccessTokenPayload | None,
+            player_id: str,
+            username: str | None
+    ) -> RoomSession:
+        """Evaluates room state requirements and registers the initial session."""
         room = await self.redis.get_room(room_id)
         if not room:
             await self._send_message(
@@ -191,30 +207,6 @@ class RoomWebSocketService:
             current_question_index=question_index
         )
         await self.redis.publish_room_message(room_id, msg.model_dump())
-    
-    def _authenticate(self, token: str | None) -> dict[str, Any] | None:
-        """
-        Verifies JWT claims against core authentication systems.
-        - Returns None if token is omitted (legitimate guest).
-        - Raises Exception if token is provided but invalid/expired.
-        """
-        if not token:
-            return None
-
-        payload = authenticate_token_string(token)
-        if not payload or not payload.get("sub"):
-            raise ValueError("Token is missing required 'sub' claim")
-
-        return payload
-    
-    def _resolve_identity(self, user_payload: dict[str, Any] | None) -> tuple[Any, Any | None]:
-        """Extracts claims from authenticated players or generates a random UUID for guests."""
-        if user_payload:
-            player_id: str = user_payload["sub"]
-            username: str = user_payload["preferred_username"]
-            return player_id, username
-
-        return str(uuid.uuid4()), None
     
     def _resolve_role(self, player_id: str, room: Room) -> str:
         """Evaluates whether the caller maps directly to the unique creator of the room registry."""

@@ -7,6 +7,7 @@ from app.domain.room_session import RoomSession
 from app.schemas.multiplayer import Room, RoomStatus
 from app.models.multiplayer import Player
 from app.schemas.websocket_messages import JoinAction, AnswerAction, ErrorMessage
+from app.schemas.auth import WSTicket, AccessTokenPayload
 
 @pytest.fixture
 def mock_manager() -> RoomManager:
@@ -28,6 +29,7 @@ def mock_redis() -> RedisClient:
 @pytest.fixture
 def mock_websocket() -> MagicMock:
     ws = MagicMock()
+    ws.accept = AsyncMock()
     ws.send_json = AsyncMock()
     ws.close = AsyncMock()
     ws.query_params = {}
@@ -41,9 +43,7 @@ def service(mock_manager: RoomManager, mock_redis: RedisClient) -> RoomWebSocket
 async def test_initialize_session_as_host(service, mock_websocket):
     mock_websocket.query_params = {}
 
-    service._resolve_identity = MagicMock(return_value=("host-id", "John"))
-
-    session = await service._initialize_session(mock_websocket, "room1")
+    session = await service._initialize_session(mock_websocket, "room1", None, "host-id", "John")
 
     assert isinstance(session, RoomSession)
     assert session.is_host is True
@@ -121,7 +121,7 @@ async def test_room_not_found(service, mock_websocket, mock_redis):
     mock_redis.get_room.return_value = None
 
     with pytest.raises(Exception):
-        await service._initialize_session(mock_websocket, "room1")
+        await service._initialize_session(mock_websocket, "room1", None, "host-id", "John")
 
     mock_websocket.close.assert_called_once()
 
@@ -136,7 +136,7 @@ async def test_room_already_started(service, mock_websocket, mock_redis):
     )
 
     with pytest.raises(Exception):
-        await service._initialize_session(mock_websocket, "room1")
+        await service._initialize_session(mock_websocket, "room1", None, "host-id", "John")
 
     mock_websocket.close.assert_called_once()
 
@@ -179,10 +179,9 @@ async def test_initialize_session__when_player_already_connected__raises_excepti
         service, mock_websocket, mock_redis
 ):
     mock_redis.add_player_if_not_exists.return_value = False
-    service._resolve_identity = MagicMock(return_value=("host-id", "HostUser"))
 
     with pytest.raises(Exception, match="Player already connected"):
-        await service._initialize_session(mock_websocket, "room1")
+        await service._initialize_session(mock_websocket, "room1", None, "host-id", "John")
 
     mock_redis.add_player_if_not_exists.assert_called_once()
     mock_websocket.send_json.assert_called_with(
@@ -218,20 +217,33 @@ async def test_handle_join__when_guest_already_connected__raises_exception_and_c
     mock_websocket.close.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_initialize_session__when_token_payload_missing_sub_claim__raises_exception_and_closes_socket(
-    service, mock_websocket
+async def test_handle_connection_when_ticket_invalid_or_expired__rejects_and_closes_socket(
+    service, mock_websocket, mock_redis
 ):
-    mock_websocket.query_params = {"token": "token-without-sub"}
-    service._authenticate = MagicMock(side_effect=ValueError("Token is missing required 'sub' claim"))
+    invalid_ticket = "invalid-or-expired-ticket"
+    mock_redis.retrieve_and_delete_ticket.return_value = None
 
-    with pytest.raises(Exception, match="Invalid or expired token"):
-        await service._initialize_session(mock_websocket, "room1")
+    await service.handle_connection(mock_websocket, "room1", invalid_ticket)
 
-    service._authenticate.assert_called_once_with("token-without-sub")
-    mock_websocket.send_json.assert_called_once_with(
-        ErrorMessage(
-            code="UNAUTHORIZED",
-            message="Invalid or expired token"
-        ).model_dump()
+    mock_redis.retrieve_and_delete_ticket.assert_awaited_once_with(invalid_ticket)
+    mock_websocket.close.assert_awaited_once()
+    mock_websocket.accept.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_handle_connection_rejects_ticket_for_another_room(
+    service, mock_websocket, mock_redis
+):
+    mock_redis.retrieve_and_delete_ticket.return_value = WSTicket(
+        player_id="user-1",
+        username="User",
+        user_payload=AccessTokenPayload(sub="user-1"),
+        room_id="other-room",
     )
-    mock_websocket.close.assert_called_once()
+
+    await service.handle_connection(mock_websocket, "room1", "ticket-value")
+
+    mock_redis.retrieve_and_delete_ticket.assert_awaited_once_with("ticket-value")
+    mock_websocket.accept.assert_not_called()
+    mock_websocket.close.assert_awaited_once()
+    service.manager.connect.assert_not_awaited()
+    service.manager.disconnect.assert_not_awaited()

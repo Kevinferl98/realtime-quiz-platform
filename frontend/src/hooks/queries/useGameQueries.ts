@@ -9,3 +9,9 @@ export function useCreateRoom() {
         },
     });
 }
+
+export function useGetWSTicketMutation() {
+    return useMutation({
+        mutationFn: (roomId: string) => gameService.getWSTicket(roomId)
+    });
+}

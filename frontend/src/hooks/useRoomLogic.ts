@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useContext } from "react";
+import { useEffect, useRef, useState, useContext, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../auth/AuthProvider";
 import { RoomSocket } from "../websocket/roomSocket";
 import { Role, Question, LeaderboardEntry, RoomViewState } from "../types/room";
+import { useGetWSTicketMutation } from "./queries/useGameQueries";
 
 export function useRoomLogic() {
     const { room_id } = useParams();
@@ -10,7 +11,6 @@ export function useRoomLogic() {
     const { keycloak, authenticated } = useContext(AuthContext);
 
     const roomSocketRef = useRef<RoomSocket | null>(null);
-    const playerIdRef = useRef<string>("");
 
     const [role, setRole] = useState<Role>("player");
     const [players, setPlayers] = useState<string[]>([]);
@@ -19,6 +19,8 @@ export function useRoomLogic() {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
     const [connected, setConnected] = useState(false);
+    const connectionGenerationRef = useRef(0);
+    const connectingRef = useRef(false);
 
     const [nameInput, setNameInput] = useState("");
     const [nameSubmitted, setNameSubmitted] = useState(false);
@@ -30,6 +32,10 @@ export function useRoomLogic() {
     const [totalTime, setTotalTime] = useState<number>(15);
 
     const [redirect, setRedirect] = useState<string | null>(null);
+
+    const { mutateAsync: getWSTicket } = useGetWSTicketMutation();
+    const playerId = keycloak.tokenParsed?.sub as string | undefined;
+    const authenticatedUsername = keycloak.tokenParsed?.preferred_username as string | undefined;
 
     const getViewState = (): RoomViewState => {
         if (!authenticated && !nameSubmitted) return "ENTER_NAME";
@@ -43,37 +49,65 @@ export function useRoomLogic() {
         return "WAITING";
     };
 
-    const disconnect = () => {
+    const disconnect = useCallback(() => {
+        connectionGenerationRef.current += 1;
+        connectingRef.current = false;
         roomSocketRef.current?.disconnect();
         roomSocketRef.current = null;
-    }
+        setConnected(false);
+    }, []);
 
-    const connectRoom = (playerId: string, username?: string) => {
-        if (!room_id) {
+    const connectRoom = useCallback(async (username?: string) => {
+        if (!room_id || connectingRef.current || roomSocketRef.current) {
             return;
         }
 
-        const socket = new RoomSocket(room_id, authenticated ? keycloak.token : undefined);
-        roomSocketRef.current = socket;
-        socket.onOpen(() => {
-            setConnected(true);
+        const generation = connectionGenerationRef.current;
+        connectingRef.current = true;
+        let ticket: string | undefined = undefined;
 
-            if (username && role !== "host") {
-                socket.join(username);
+        if (authenticated) {
+            try {
+                const response = await getWSTicket(room_id);
+                ticket = response.ticket;
+            } catch (err) {
+                console.error("Failed to acquire WebSocket access ticket:", err);
+                if (generation === connectionGenerationRef.current) {
+                    setRedirect("/");
+                }
+                connectingRef.current = false;
+                return;
             }
+        }
+
+        if (generation !== connectionGenerationRef.current) {
+            connectingRef.current = false;
+            return;
+        }
+
+        const socket = new RoomSocket(room_id, ticket);
+        roomSocketRef.current = socket;
+        connectingRef.current = false;
+        socket.onOpen(() => {
+            if (roomSocketRef.current !== socket) return;
+            setConnected(true);
         });
 
         socket.onClose(() => {
+            if (roomSocketRef.current !== socket) return;
+            roomSocketRef.current = null;
             setConnected(false);
-        })
+        });
 
         socket.connect({
-            onRole: (role, playerId) => {
+            onRole: (role) => {
                 setRole(role);
-                playerIdRef.current = playerId;
                 
-                if (authenticated && role !== "host") {
-                    socket.join(keycloak.tokenParsed?.preferred_username as string);
+                if (role !== "host") {
+                    const finalUsername = username || authenticatedUsername;
+                    if (finalUsername) {
+                        socket.join(finalUsername);
+                    }
                 }
             },
 
@@ -120,9 +154,16 @@ export function useRoomLogic() {
                 ) {
                     setRedirect("/");
                 }
+            },
+
+            onConnectionError: (error) => {
+                if (roomSocketRef.current !== socket) return;
+                console.error("WebSocket connection error:", error);
+                setConnected(false);
+                alert(error.message);
             }
         });
-    };
+    }, [room_id, authenticated, authenticatedUsername, getWSTicket]);
 
     // Timer countdown
     useEffect(() => {
@@ -150,17 +191,22 @@ export function useRoomLogic() {
         }
 
         if (authenticated) {
-            const playerId = keycloak.tokenParsed?.sub as string;
-            const username = keycloak.tokenParsed?.preferred_username as string;
-            playerIdRef.current = playerId;
-            connectRoom(playerId, username);
+            if (!playerId) {
+                setRedirect("/");
+                return;
+            }
+
+
+            connectRoom(authenticatedUsername).catch((err) => {
+                console.error("Error connecting to room:", err);
+            });
             setNameSubmitted(true);
         }
 
         return () => {
             disconnect();
         }
-    }, [authenticated, room_id]);
+    }, [authenticated, room_id, playerId, authenticatedUsername, connectRoom, disconnect]);
 
     // Redirect
     useEffect(() => {
@@ -168,22 +214,23 @@ export function useRoomLogic() {
     }, [redirect, navigate]);
 
     const handleSubmitName = () => {
-        if (!nameInput.trim()) {
+        if (!nameInput.trim() || connectingRef.current || roomSocketRef.current) {
             return;
         }
 
-        const uuid = crypto.randomUUID();
-        playerIdRef.current = uuid;
-        connectRoom(uuid, nameInput.trim());
+        connectRoom(nameInput.trim()).catch((err) => {
+            console.error("Error connecting guest to room:", err);
+        });
         setNameSubmitted(true);
     };
 
     const handleStart = () => {
+        if (!connected) return;
         roomSocketRef.current?.start();
     };
 
     const handleAnswer = (answer: string) => {
-        if (selectedAnswer) {
+        if (!connected || selectedAnswer) {
             return;
         }
 

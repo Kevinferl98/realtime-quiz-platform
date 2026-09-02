@@ -1,7 +1,8 @@
 from typing import Optional
+from app.schemas.auth import AccessTokenPayload
 
 class RoomSession:
-    def __init__(self, player_id: str, role: str, username: Optional[str] = None, user_payload: Optional[dict] = None):
+    def __init__(self, player_id: str, role: str, username: Optional[str] = None, user_payload: Optional[AccessTokenPayload] = None):
         self.player_id = player_id
         self.username = username
         self.role = role

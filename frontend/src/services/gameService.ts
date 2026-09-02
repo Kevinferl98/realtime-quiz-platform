@@ -1,5 +1,5 @@
 import { apiClient } from "../api/apiClient";
-import { CreateRoomResponse } from "../types/room";
+import { CreateRoomResponse, WSTicketResponse } from "../types/room";
 
 export const gameService = {
     createRoom(quizId: string): Promise<CreateRoomResponse> {
@@ -7,5 +7,12 @@ export const gameService = {
             method: "POST",
             requireAuth: true
         })
-    }
+    },
+
+    getWSTicket(roomId: string): Promise<WSTicketResponse> {
+        return apiClient<WSTicketResponse>(`/game/rooms/${roomId}/ws-ticket`, {
+            method: "POST",
+            requireAuth: true
+        })
+    } 
 }

@@ -1,8 +1,9 @@
 import jwt
 from jwt import PyJWKClient
+from fastapi import HTTPException, status
 from app.core.config import config
 from my_observability import get_logger
-from fastapi import HTTPException, status
+from app.schemas.auth import AccessTokenPayload
 
 logger = get_logger(__name__)
 
@@ -16,10 +17,10 @@ jwks_client = PyJWKClient(
     lifespan=3600
 )
 
-def decode_access_token(token: str) -> dict:
+def decode_access_token(token: str) -> AccessTokenPayload:
     signing_key = jwks_client.get_signing_key_from_jwt(token)
 
-    return jwt.decode(
+    payload = jwt.decode(
         token,
         signing_key.key,
         algorithms=["RS256"],
@@ -31,7 +32,9 @@ def decode_access_token(token: str) -> dict:
         }
     )
 
-def authenticate_token_string(token: str) -> dict:
+    return AccessTokenPayload.model_validate(payload)
+
+def authenticate_token_string(token: str) -> AccessTokenPayload:
     try:
         return decode_access_token(token)
     except Exception as e:

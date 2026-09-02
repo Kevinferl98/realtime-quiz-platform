@@ -1,11 +1,12 @@
 import redis.asyncio as redis
 import json
+from pathlib import Path
 from app.schemas.multiplayer import Room, RoomAnswer, Question, RoomStatus
 from app.models.multiplayer import Player, LeaderboardEntry
 from app.core.config import config
 from my_observability import get_logger
-from pathlib import Path
 from app.services.redis.keys import RedisKeys
+from app.schemas.auth import WSTicket
 
 logger = get_logger(__name__)
 
@@ -14,6 +15,7 @@ SCRIPTS_DIR = Path(__file__).parent / "scripts"
 INTERNAL_PLAYER_ID = "__room_meta__"
 DEFAULT_ROOM_TTL = 3600
 DEFAULT_LEADERBOARD_LIMIT = 5
+TICKET_TTL_SECONDS = 10
 
 class RedisClient:
     def __init__(self):
@@ -259,3 +261,17 @@ class RedisClient:
                     await handler(room_id, data)
                 except Exception as e:
                     logger.warning(f"Error processing pubsub message: {e}")
+
+    async def save_ticket(self, ticket_id: str, ticket: WSTicket) -> None:
+        await self.redis.setex(
+            RedisKeys.ticket(ticket_id),
+            TICKET_TTL_SECONDS,
+            ticket.model_dump_json()
+        )
+
+    async def retrieve_and_delete_ticket(self, ticket_id: str) -> WSTicket | None:
+        raw = await self.redis.getdel(RedisKeys.ticket(ticket_id))
+        if not raw:
+            return None
+
+        return WSTicket.model_validate_json(raw)

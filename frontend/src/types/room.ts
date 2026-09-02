@@ -25,3 +25,8 @@ export interface LeaderboardEntry {
 export interface CreateRoomResponse {
     room_id: number;
 }
+
+export interface WSTicketResponse {
+    ticket: string;
+    expires_in: number;
+}

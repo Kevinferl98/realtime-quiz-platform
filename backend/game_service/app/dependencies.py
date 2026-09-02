@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.security import decode_access_token
 from my_observability import get_logger
+from app.schemas.auth import AccessTokenPayload
 
 _redis_instance = RedisClient()
 _connection_manager_instance = ConnectionManager()
@@ -19,7 +20,7 @@ def get_redis_client() -> RedisClient:
 def get_room_manager() -> RoomManager:
     return _manager_instance
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)) -> dict:
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)) -> AccessTokenPayload:
     token = credentials.credentials
     try:
         payload = decode_access_token(token)

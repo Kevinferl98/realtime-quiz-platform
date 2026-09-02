@@ -2,6 +2,7 @@ import { ClientMessage, ServerMessage } from "../types/roomMessages";
 
 type MessageHandler = (message: ServerMessage) => void;
 type VoidHandler = () => void;
+type ErrorHandler = (error: Error) => void;
 
 export class WebSocketClient {
     private socket: WebSocket | null = null;
@@ -9,6 +10,7 @@ export class WebSocketClient {
     private messageHandler?: MessageHandler;
     private openHandler?: VoidHandler;
     private closeHandler?: VoidHandler;
+    private errorHandler?: ErrorHandler;
 
     constructor(private readonly url: string) {}
 
@@ -26,6 +28,10 @@ export class WebSocketClient {
         this.socket.onmessage = (event: MessageEvent<string>) => {
             const message = JSON.parse(event.data) as ServerMessage;
             this.messageHandler?.(message);
+        };
+
+        this.socket.onerror = () => {
+            this.errorHandler?.(new Error("WebSocket connection error"));
         };
 
         this.socket.onclose = () => {
@@ -56,6 +62,10 @@ export class WebSocketClient {
 
     onClose(handler: VoidHandler): void {
         this.closeHandler = handler;
+    }
+
+    onError(handler: ErrorHandler): void {
+        this.errorHandler = handler;
     }
 
     get connected(): boolean {
