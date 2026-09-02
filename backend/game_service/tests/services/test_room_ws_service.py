@@ -7,6 +7,7 @@ from app.domain.room_session import RoomSession
 from app.schemas.multiplayer import Room, RoomStatus
 from app.models.multiplayer import Player
 from app.schemas.websocket_messages import JoinAction, AnswerAction, ErrorMessage
+from app.schemas.auth import WSTicket, AccessTokenPayload
 
 @pytest.fixture
 def mock_manager() -> RoomManager:
@@ -28,6 +29,7 @@ def mock_redis() -> RedisClient:
 @pytest.fixture
 def mock_websocket() -> MagicMock:
     ws = MagicMock()
+    ws.accept = AsyncMock()
     ws.send_json = AsyncMock()
     ws.close = AsyncMock()
     ws.query_params = {}
@@ -226,3 +228,22 @@ async def test_handle_connection_when_ticket_invalid_or_expired__rejects_and_clo
     mock_redis.retrieve_and_delete_ticket.assert_awaited_once_with(invalid_ticket)
     mock_websocket.close.assert_awaited_once()
     mock_websocket.accept.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_handle_connection_rejects_ticket_for_another_room(
+    service, mock_websocket, mock_redis
+):
+    mock_redis.retrieve_and_delete_ticket.return_value = WSTicket(
+        player_id="user-1",
+        username="User",
+        user_payload=AccessTokenPayload(sub="user-1"),
+        room_id="other-room",
+    )
+
+    await service.handle_connection(mock_websocket, "room1", "ticket-value")
+
+    mock_redis.retrieve_and_delete_ticket.assert_awaited_once_with("ticket-value")
+    mock_websocket.accept.assert_not_called()
+    mock_websocket.close.assert_awaited_once()
+    service.manager.connect.assert_not_awaited()
+    service.manager.disconnect.assert_not_awaited()

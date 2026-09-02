@@ -31,6 +31,7 @@ class RoomWebSocketService:
 
     async def handle_connection(self, websocket: WebSocket, room_id: str, ticket: str | None) -> None:
         """Accepts a connection, validates the ticket and starts the event loop."""
+        registered = False
         try:
             ticket_data = await self._consume_ticket(ticket, room_id)
             if ticket_data.room_id != room_id:
@@ -38,6 +39,7 @@ class RoomWebSocketService:
 
             await websocket.accept()
             await self.manager.connect(room_id, websocket)
+            registered = True
 
             session = await self._initialize_session(websocket, room_id, ticket_data.user_payload, ticket_data.player_id, ticket_data.username)
             await self.manager.register_player_ws(websocket, session.player_id)
@@ -50,7 +52,8 @@ class RoomWebSocketService:
         except Exception as e:
             logger.error(f"WebSocket closed with error in room {room_id}: {e}")
         finally:
-            await self.handle_disconnect(websocket, room_id)
+            if registered:
+                await self.handle_disconnect(websocket, room_id)
 
     async def _consume_ticket(self, ticket: str | None, room_id: str) -> WSTicket:
         """Atomically retrieves and deletes the ticket from Redis to prevent replay attacks."""
