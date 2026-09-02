@@ -11,6 +11,7 @@ interface RoomSocketHandlers {
     onAnswerResult?: (correctAnswer: string) => void;
     onLeaderboard?: (leaderboard: LeaderboardEntry[], final: boolean) => void;
     onError?: (code: string, message: string) => void;
+    onConnectionError?: (error: Error) => void;
 }
 
 export class RoomSocket {
@@ -18,7 +19,7 @@ export class RoomSocket {
 
     constructor(private readonly roomId: string, private readonly ticket?: string) {
         const ticketQuery = ticket ? `?ticket=${encodeURIComponent(ticket)}` : "";
-        const url = `${CONFIG.WS_BASE}/rooms/${roomId}${ticketQuery}`;
+        const url = `${CONFIG.WS_BASE}/rooms/${encodeURIComponent(roomId)}${ticketQuery}`;
         this.client = new WebSocketClient(url);
     }
 
@@ -28,6 +29,7 @@ export class RoomSocket {
                 this.handleMessage(message, handlers);
             }
         );
+        this.client.onError((error) => handlers.onConnectionError?.(error));
 
         this.client.connect();
     }
@@ -88,6 +90,8 @@ export class RoomSocket {
             case "error":
                 handlers.onError?.(message.code, message.message);
                 break;
+            default:
+                console.warn("Ignoring unknown room WebSocket message", message);
         }
     }
 }
