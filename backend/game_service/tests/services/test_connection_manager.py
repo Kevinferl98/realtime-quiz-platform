@@ -1,32 +1,34 @@
 import pytest
+import asyncio
 from unittest.mock import MagicMock, AsyncMock
 from fastapi import WebSocket
 from app.services.connection_manager import ConnectionManager
 
 @pytest.fixture()
-def manager():
+def manager() -> ConnectionManager:
     return ConnectionManager()
 
-@pytest.fixture()
-def mock_websocket():
+def make_mock_ws(send_json_side_effect=None) -> MagicMock:
+    """Helper factory to build a WebSocket mock with spec and custom behavior."""
     ws = MagicMock(spec=WebSocket)
-    ws.send_json = AsyncMock()
+    ws.send_json = AsyncMock(side_effect=send_json_side_effect)
     return ws
 
 @pytest.mark.asyncio
-async def test_add_connection(manager, mock_websocket):
+async def test_add_connection(manager):
     room_id = "room_123"
+    ws = make_mock_ws()
 
-    await manager.add_connection(room_id, mock_websocket)
+    await manager.add_connection(room_id, ws)
 
     assert room_id in manager._room_connections
-    assert manager._room_connections[room_id] == [mock_websocket]
+    assert manager._room_connections[room_id] == [ws]
 
 @pytest.mark.asyncio
 async def test_add_multiple_connections_to_same_room(manager):
     room_id = "room_123"
-    ws1 = MagicMock(spec=WebSocket)
-    ws2 = MagicMock(spec=WebSocket)
+    ws1 = make_mock_ws()
+    ws2 = make_mock_ws()
 
     await manager.add_connection(room_id, ws1)
     await manager.add_connection(room_id, ws2)
@@ -37,8 +39,7 @@ async def test_add_multiple_connections_to_same_room(manager):
 @pytest.mark.asyncio
 async def test_remove_connection_returns_remaining_count(manager):
     room_id = "room_123"
-    ws1 = MagicMock(spec=WebSocket)
-    ws2 = MagicMock(spec=WebSocket)
+    ws1, ws2 = make_mock_ws(), make_mock_ws()
 
     await manager.add_connection(room_id, ws1)
     await manager.add_connection(room_id, ws2)
@@ -49,20 +50,22 @@ async def test_remove_connection_returns_remaining_count(manager):
     assert manager._room_connections[room_id] == [ws2]
 
 @pytest.mark.asyncio
-async def test_remove_last_connection_deallocates_room(manager, mock_websocket):
+async def test_remove_last_connection_deallocates_room(manager):
     room_id = "room_123"
-    await manager.add_connection(room_id, mock_websocket)
+    ws = make_mock_ws()
 
-    remaining = await manager.remove_connection(room_id, mock_websocket)
+    await manager.add_connection(room_id, ws)
+    remaining = await manager.remove_connection(room_id, ws)
 
     assert remaining == 0
     assert room_id not in manager._room_connections
 
 @pytest.mark.asyncio
-async def test_remove_non_existent_connection(manager, mock_websocket):
+async def test_remove_non_existent_connection(manager):
     room_id = "empty_room"
+    ws = make_mock_ws()
 
-    remaining = await manager.remove_connection(room_id, mock_websocket)
+    remaining = await manager.remove_connection(room_id, ws)
 
     assert remaining == 0
     assert room_id not in manager._room_connections
@@ -76,11 +79,7 @@ async def test_broadcast_to_empty_room_returns_immediately(manager):
 async def test_broadcast_success_to_all_clients(manager):
     room_id = "room_123"
     message = {"type": "test"}
-
-    ws1 = MagicMock(spec=WebSocket)
-    ws1.send_json = AsyncMock()
-    ws2 = MagicMock(spec=WebSocket)
-    ws2.send_json = AsyncMock()
+    ws1, ws2 = make_mock_ws(), make_mock_ws()
 
     await manager.add_connection(room_id, ws1)
     await manager.add_connection(room_id, ws2)
@@ -92,21 +91,39 @@ async def test_broadcast_success_to_all_clients(manager):
     ws2.send_json.assert_called_once_with(message)
 
 @pytest.mark.asyncio
-async def test_broadcast_tracks_and_returns_inactive_connections(manager):
+async def test_broadcast_tracks_failed_connections(manager: ConnectionManager):
     room_id = "room_123"
-    message = {"type": "test"}
+    message = {"type": "game_update"}
 
-    ws_healthy = MagicMock(spec=WebSocket)
-    ws_healthy.send_json = AsyncMock()
-
-    ws_inactive = MagicMock(spec=WebSocket)
-    ws_inactive.send_json = AsyncMock(side_effect=RuntimeError("Connection lost"))
+    ws_healthy = make_mock_ws()
+    ws_broken = make_mock_ws(send_json_side_effect=RuntimeError("Socket closed"))
 
     await manager.add_connection(room_id, ws_healthy)
-    await manager.add_connection(room_id, ws_inactive)
+    await manager.add_connection(room_id, ws_broken)
 
     inactive_sockets = await manager.broadcast_to_room(room_id, message)
 
-    assert inactive_sockets == [ws_inactive]
+    assert inactive_sockets == [ws_broken]
     ws_healthy.send_json.assert_called_once_with(message)
-    ws_inactive.send_json.assert_called_once_with(message)
+    ws_broken.send_json.assert_called_once_with(message)
+
+@pytest.mark.asyncio
+async def test_broadcast_timeout_returns_inactive(manager: ConnectionManager):
+    room_id = "room_123"
+    message = {"type": "ping"}
+
+    async def slow_send(_: dict):
+        await asyncio.sleep(0.5)
+
+    ws_healthy = make_mock_ws()
+    ws_slow = make_mock_ws(send_json_side_effect=slow_send)
+
+    await manager.add_connection(room_id, ws_healthy)
+    await manager.add_connection(room_id, ws_slow)
+
+    inactive_sockets = await manager.broadcast_to_room(
+        room_id, message, timeout_seconds=0.1
+    )
+
+    assert inactive_sockets == [ws_slow]
+    ws_healthy.send_json.assert_called_once_with(message)

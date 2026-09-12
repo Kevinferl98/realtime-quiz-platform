@@ -1,5 +1,9 @@
+import asyncio
 from typing import Dict, List
 from fastapi import WebSocket
+from my_observability import get_logger
+
+logger = get_logger(__name__)
 
 class ConnectionManager:
     """Manages active WebSocket connections grouped by room IDs."""
@@ -26,7 +30,12 @@ class ConnectionManager:
 
         return len(connections)
 
-    async def broadcast_to_room(self, room_id: str, message: dict) -> List[WebSocket]:
+    async def broadcast_to_room(
+        self,
+        room_id: str,
+        message: dict,
+        timeout_seconds: float = 2.0
+    ) -> List[WebSocket]:
         """
         Broadcast a JSON message concurrently to all active web sockets in a room.
         Returns a list of stale/inactive WebSocket connections that failed
@@ -38,12 +47,20 @@ class ConnectionManager:
         if not connections:
             return []
 
-        inactive_connections: List[WebSocket] = []
-        for ws in connections:
+        async def send_safe(websocket: WebSocket) -> tuple[WebSocket, bool]:
             try:
-                await ws.send_json(message)
-            except Exception:
-                # Track broken connections.
-                inactive_connections.append(ws)
+                await asyncio.wait_for(websocket.send_json(message), timeout=timeout_seconds)
+                return websocket, True
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "WebSocket broadcast timed out", room_id=room_id)
+                return websocket, False
+            except Exception as e:
+                logger.warning("WebSocket broadcast failed", room_id=room_id, error=str(e))
+                return websocket, False
 
-        return inactive_connections
+        results = await asyncio.gather(
+            *(send_safe(ws) for ws in connections)
+        )
+
+        return [websocket for websocket, success in results if not success]
