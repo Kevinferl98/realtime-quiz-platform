@@ -33,6 +33,11 @@ class PlayerLeftMessage(BaseModel):
     type: Literal["player_left"] = "player_left"
     players: list[str]
 
+class RoomCancelledMessage(BaseModel):
+    type: Literal["room_cancelled"] = "room_cancelled"
+    code: str
+    message: str
+
 class AnswerSubmittedMessage(BaseModel):
     type: Literal["answer_submitted"] = "answer_submitted"
     current_question_index: int

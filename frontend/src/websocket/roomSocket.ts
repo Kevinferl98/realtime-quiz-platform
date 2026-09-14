@@ -6,6 +6,7 @@ import { Question, LeaderboardEntry, Role } from "../types/room";
 interface RoomSocketHandlers {
     onRole?: (role: Role, playerId: string) => void;
     onPlayersChanged?: (players: string[]) => void;
+    onRoomCancelled?: (code: string, message: string) => void;
     onQuestion?: (question: Question) => void;
     onTimer?: (seconds: number) => void;
     onAnswerResult?: (correctAnswer: string) => void;
@@ -74,6 +75,9 @@ export class RoomSocket {
             case "player_joined":
             case "player_left":
                 handlers.onPlayersChanged?.(message.players);
+                break;
+            case "room_cancelled":
+                handlers.onRoomCancelled?.(message.code, message.message);
                 break;
             case "question":
                 handlers.onQuestion?.(message.question);

@@ -23,6 +23,7 @@ class RedisClient:
         self._create_room_script = self._load_script("create_room.lua")
         self._start_quiz_script = self._load_script("start_quiz.lua")
         self._add_player_script = self._load_script("add_player.lua")
+        self._cancel_room_script = self._load_script("cancel_room.lua")
 
     def _load_script(self, filename: str):
         script_path = SCRIPTS_DIR / filename
@@ -98,6 +99,18 @@ class RedisClient:
     async def try_start_room(self, room_id: str) -> bool:
         result = await self._start_quiz_script(
             keys=[RedisKeys.room(room_id)]
+        )
+        return bool(result)
+
+    async def cancel_room_if_not_started(self, room_id: str, owner_id: str) -> bool:
+        result = await self._cancel_room_script(
+            keys=[
+                RedisKeys.room(room_id),
+                RedisKeys.questions(room_id),
+                RedisKeys.players(room_id),
+                RedisKeys.scores(room_id),
+            ],
+            args=[owner_id],
         )
         return bool(result)
     

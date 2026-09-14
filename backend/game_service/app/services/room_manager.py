@@ -7,7 +7,11 @@ from app.services.redis.redis_client import RedisClient
 from app.services.connection_manager import ConnectionManager
 from app.services.quiz_engine import QuizEngine
 from my_observability import get_logger
-from app.schemas.websocket_messages import PlayerLeftMessage, AnswerSubmittedMessage
+from app.schemas.websocket_messages import (
+    PlayerLeftMessage,
+    RoomCancelledMessage,
+    AnswerSubmittedMessage,
+)
 
 logger = get_logger(__name__)
 
@@ -52,16 +56,35 @@ class RoomManager:
         await self._connection_manager.add_connection(room_id, websocket)
         logger.debug("WebSocket source successfully registered", room_id=room_id)
 
-    async def disconnect(self, room_id: str, websocket: WebSocket) -> None:
+    async def disconnect(
+        self,
+        room_id: str,
+        websocket: WebSocket,
+        is_host: bool = False,
+    ) -> None:
         """Handles connection teardown, removing player sessions and cleanup of empty rooms."""
         player_id = self._ws_to_player.pop(websocket, None)
+        room_cancelled = False
+
+        if player_id and is_host:
+            room_cancelled = await self._redis.cancel_room_if_not_started(room_id, player_id)
+
+            if room_cancelled:
+                await self._redis.publish_room_message(
+                    room_id,
+                    RoomCancelledMessage(
+                        code="HOST_DISCONNECTED",
+                        message="The host left before the quiz started.",
+                    ).model_dump(),
+                )
+
         remaining_count = await self._connection_manager.remove_connection(room_id, websocket)
 
         # Automatically shutdown game tasks if the room becomes empty.
         if remaining_count == 0:
             await self._cleanup_room_resources(room_id)
 
-        if player_id:
+        if player_id and not room_cancelled:
             await self._redis.remove_player(room_id, player_id)
             players = await self._redis.get_players(room_id)
             msg = PlayerLeftMessage(

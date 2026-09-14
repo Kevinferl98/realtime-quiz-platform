@@ -32,6 +32,7 @@ class RoomWebSocketService:
     async def handle_connection(self, websocket: WebSocket, room_id: str, ticket: str | None) -> None:
         """Accepts a connection, validates the ticket and starts the event loop."""
         registered = False
+        is_host = False
         try:
             ticket_data = await self._consume_ticket(ticket, room_id)
             if ticket_data.room_id != room_id:
@@ -42,6 +43,7 @@ class RoomWebSocketService:
             registered = True
 
             session = await self._initialize_session(websocket, room_id, ticket_data.user_payload, ticket_data.player_id, ticket_data.username)
+            is_host = session.is_host
             await self.manager.register_player_ws(websocket, session.player_id)
             await self._event_loop(websocket, room_id, session)
         except ValueError as e:
@@ -53,7 +55,11 @@ class RoomWebSocketService:
             logger.error(f"WebSocket closed with error in room {room_id}: {e}")
         finally:
             if registered:
-                await self.handle_disconnect(websocket, room_id)
+                await self.handle_disconnect(
+                    websocket,
+                    room_id,
+                    is_host=is_host,
+                )
 
     async def _consume_ticket(self, ticket: str | None, room_id: str) -> WSTicket:
         """Atomically retrieves and deletes the ticket from Redis to prevent replay attacks."""
@@ -144,9 +150,14 @@ class RoomWebSocketService:
                     )
                 )
     
-    async def handle_disconnect(self, websocket: WebSocket, room_id: str) -> None:
+    async def handle_disconnect(
+        self,
+        websocket: WebSocket,
+        room_id: str,
+        is_host: bool = False,
+    ) -> None:
         """Cleans up the localized active session inside RoomManager when the socket drops."""
-        await self.manager.disconnect(room_id, websocket)
+        await self.manager.disconnect(room_id, websocket, is_host=is_host)
 
     async def _handle_join(self, room_id: str, session: RoomSession, data: JoinAction, websocket: WebSocket) -> None:
         """Finalizes the profile registration for non-authenticated guest players."""

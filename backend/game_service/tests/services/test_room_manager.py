@@ -6,6 +6,7 @@ from app.services.connection_manager import ConnectionManager
 from app.services.redis.redis_client import RedisClient
 from app.services.room_manager import RoomManager
 from app.models.multiplayer import Player
+from app.schemas.multiplayer import Room, RoomStatus
 
 @pytest.fixture
 def mock_redis():
@@ -82,6 +83,52 @@ async def test_disconnect_player_updates_state_and_notifies(room_manager, mock_w
         "room_1",
         {"type": "player_left", "players": ["Player1", "Player2"]},
     )
+
+@pytest.mark.asyncio
+async def test_disconnect_owner_before_start_cancels_room_and_notifies(
+    room_manager, mock_websocket, mock_connection_manager, mock_redis
+):
+    mock_redis.get_room.return_value = Room(
+        room_id="room_1",
+        owner_id="owner-123",
+        quiz_id="quiz-1",
+        current_question_index=0,
+        status=RoomStatus.CREATED,
+    )
+    mock_redis.cancel_room_if_not_started.return_value = True
+    await room_manager.register_player_ws(mock_websocket, "owner-123")
+
+    await room_manager.disconnect("room_1", mock_websocket, is_host=True)
+
+    mock_redis.cancel_room_if_not_started.assert_awaited_once_with("room_1", "owner-123")
+    mock_redis.publish_room_message.assert_awaited_once_with(
+        "room_1",
+        {
+            "type": "room_cancelled",
+            "code": "HOST_DISCONNECTED",
+            "message": "The host left before the quiz started.",
+        },
+    )
+    mock_redis.remove_player.assert_not_awaited()
+
+@pytest.mark.asyncio
+async def test_disconnect_owner_after_start_does_not_cancel_room(
+    room_manager, mock_websocket, mock_redis
+):
+    mock_redis.get_room.return_value = Room(
+        room_id="room_1",
+        owner_id="owner-123",
+        quiz_id="quiz-1",
+        current_question_index=0,
+        status=RoomStatus.STARTED,
+    )
+    mock_redis.cancel_room_if_not_started.return_value = False
+    await room_manager.register_player_ws(mock_websocket, "owner-123")
+
+    await room_manager.disconnect("room_1", mock_websocket, is_host=True)
+
+    mock_redis.cancel_room_if_not_started.assert_awaited_once_with("room_1", "owner-123")
+    mock_redis.remove_player.assert_awaited_once_with("room_1", "owner-123")
 
 @pytest.mark.asyncio
 async def test_disconnect_without_registered_player_does_not_touch_redis_player_state(
