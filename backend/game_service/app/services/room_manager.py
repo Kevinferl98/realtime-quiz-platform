@@ -78,15 +78,15 @@ class RoomManager:
                     ).model_dump(),
                 )
 
-        remaining_count = await self._connection_manager.remove_connection(room_id, websocket)
-
-        # Automatically shutdown game tasks if the room becomes empty.
-        if remaining_count == 0:
-            await self._cleanup_room_resources(room_id)
+        await self._connection_manager.remove_connection(room_id, websocket)
 
         if player_id and not room_cancelled:
             await self._redis.remove_player(room_id, player_id)
             players = await self._redis.get_players(room_id)
+            if len(players) == 0:
+                # Automatically shutdown game tasks if the room becomes empty.
+                await self._cleanup_room_resources(room_id)
+                return
             msg = PlayerLeftMessage(
                 players=[p.name for p in players if p.name]
             )
