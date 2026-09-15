@@ -37,16 +37,15 @@ async def test_add_multiple_connections_to_same_room(manager):
     assert manager._room_connections[room_id] == [ws1, ws2]
 
 @pytest.mark.asyncio
-async def test_remove_connection_returns_remaining_count(manager):
+async def test_remove_connection(manager):
     room_id = "room_123"
     ws1, ws2 = make_mock_ws(), make_mock_ws()
 
     await manager.add_connection(room_id, ws1)
     await manager.add_connection(room_id, ws2)
 
-    remaining = await manager.remove_connection(room_id, ws1)
+    await manager.remove_connection(room_id, ws1)
 
-    assert remaining == 1
     assert manager._room_connections[room_id] == [ws2]
 
 @pytest.mark.asyncio
@@ -55,9 +54,8 @@ async def test_remove_last_connection_deallocates_room(manager):
     ws = make_mock_ws()
 
     await manager.add_connection(room_id, ws)
-    remaining = await manager.remove_connection(room_id, ws)
+    await manager.remove_connection(room_id, ws)
 
-    assert remaining == 0
     assert room_id not in manager._room_connections
 
 @pytest.mark.asyncio
@@ -65,9 +63,8 @@ async def test_remove_non_existent_connection(manager):
     room_id = "empty_room"
     ws = make_mock_ws()
 
-    remaining = await manager.remove_connection(room_id, ws)
+    await manager.remove_connection(room_id, ws)
 
-    assert remaining == 0
     assert room_id not in manager._room_connections
 
 @pytest.mark.asyncio

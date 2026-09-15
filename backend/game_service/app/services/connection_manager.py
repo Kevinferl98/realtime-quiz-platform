@@ -14,11 +14,9 @@ class ConnectionManager:
         """Registers a new WebSocket connection into the specified room."""
         self._room_connections.setdefault(room_id, []).append(websocket)
 
-    async def remove_connection(self, room_id: str, websocket: WebSocket) -> int:
+    async def remove_connection(self, room_id: str, websocket: WebSocket) -> None:
         """
         Unregisters a WebSocket connection from a room and performs cleanup if empty.
-        Returns the count of remaining active connections in the room.
-        Returns 0 if the room is now empty and has been deallocated.
         """
         connections = self._room_connections.get(room_id, [])
         if websocket in connections:
@@ -26,9 +24,6 @@ class ConnectionManager:
 
         if not connections:
             self._room_connections.pop(room_id, None)
-            return 0
-
-        return len(connections)
 
     async def broadcast_to_room(
         self,

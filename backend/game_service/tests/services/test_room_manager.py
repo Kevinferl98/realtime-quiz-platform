@@ -140,12 +140,19 @@ async def test_disconnect_without_registered_player_does_not_touch_redis_player_
     mock_redis.publish_room_message.assert_not_awaited()
 
 @pytest.mark.asyncio
-async def test_disconnect_empty_room_triggers_cleanup(room_manager, mock_websocket, mock_connection_manager):
-    mock_connection_manager.remove_connection.return_value = 0
+async def test_disconnect_empty_room_triggers_cleanup(
+        room_manager,
+        mock_websocket,
+        mock_redis
+):
+    mock_redis.get_players.return_value = []
     room_manager._cleanup_room_resources = AsyncMock()
 
+    await room_manager.register_player_ws(mock_websocket, "player-123")
     await room_manager.disconnect("room_empty", mock_websocket)
 
+    mock_redis.remove_player.assert_awaited_once_with("room_empty", "player-123")
+    mock_redis.get_players.assert_awaited_once_with("room_empty")
     room_manager._cleanup_room_resources.assert_awaited_once_with("room_empty")
 
 @pytest.mark.asyncio
