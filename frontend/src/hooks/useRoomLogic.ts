@@ -115,6 +115,12 @@ export function useRoomLogic() {
                 setPlayers(players);
             },
 
+            onRoomCancelled: (_code, message) => {
+                alert(message);
+                disconnect();
+                setRedirect("/");
+            },
+
             onQuestion: (question) => {
                 setQuestion(question);
                 setLeaderboard([]);

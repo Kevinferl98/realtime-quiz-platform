@@ -29,6 +29,7 @@ def redis_client():
     client._create_room_script = AsyncMock(return_value=1)
     client._start_quiz_script = AsyncMock(return_value=1)
     client._add_player_script = AsyncMock(return_value=1)
+    client._cancel_room_script = AsyncMock(return_value=1)
     client.redis.time = AsyncMock(return_value=(1711000000, 0))
 
     return client
@@ -349,3 +350,22 @@ async def test_try_start_room(redis_client):
     assert call.kwargs["keys"] == [
         "room:123"
     ]
+
+@pytest.mark.asyncio
+async def test_cancel_room_if_not_started(redis_client):
+    result = await redis_client.cancel_room_if_not_started(
+        room_id="123",
+        owner_id="owner",
+    )
+
+    assert result is True
+
+    redis_client._cancel_room_script.assert_awaited_once_with(
+        keys=[
+            "room:123",
+            "room:123:questions",
+            "room:123:players",
+            "room:123:scores",
+        ],
+        args=["owner"],
+    )

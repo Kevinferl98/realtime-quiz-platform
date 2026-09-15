@@ -39,6 +39,12 @@ export interface PlayerLeftMessage {
     players: string[];
 }
 
+export interface RoomCancelledMessage {
+    type: "room_cancelled";
+    code: string;
+    message: string;
+}
+
 export interface QuestionMessage {
     type: "question";
     question: Question;
@@ -70,6 +76,7 @@ export type ServerMessage =
     | RoleMessage
     | PlayerJoinedMessage
     | PlayerLeftMessage
+    | RoomCancelledMessage
     | QuestionMessage
     | TimerMessage
     | AnswerResultMessage
