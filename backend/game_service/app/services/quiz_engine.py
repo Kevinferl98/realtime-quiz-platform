@@ -83,10 +83,10 @@ class QuizEngine:
         event_key = f"{self.room_id}:{question_index}"
         event = self._events_map.setdefault(event_key, asyncio.Event())
 
-        start_time = time.time()
+        start_time = time.monotonic()
 
-        while time.time() - start_time < QUESTION_DURATION:
-            remaining_time = QUESTION_DURATION - (time.time() - start_time)
+        while time.monotonic() - start_time < QUESTION_DURATION:
+            remaining_time = QUESTION_DURATION - (time.monotonic() - start_time)
             if remaining_time <= 0:
                 break
 
