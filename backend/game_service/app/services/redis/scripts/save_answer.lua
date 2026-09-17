@@ -29,5 +29,5 @@ if set_result == 0 then
     return 3 -- ALREADY_SUBMITTED
 end
 
-redis.call("EXPIRE", answers_key, 300)
+redis.call("EXPIRE", answers_key, 300, "NX")
 return 1 -- SAVED
