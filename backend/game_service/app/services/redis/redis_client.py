@@ -2,7 +2,7 @@ import redis.asyncio as redis
 import json
 from pathlib import Path
 from app.schemas.multiplayer import Room, RoomAnswer, Question, RoomStatus
-from app.models.multiplayer import Player, LeaderboardEntry
+from app.models.multiplayer import Player, LeaderboardEntry, SaveAnswerResult
 from app.core.config import config
 from my_observability import get_logger
 from app.services.redis.keys import RedisKeys
@@ -24,6 +24,8 @@ class RedisClient:
         self._start_quiz_script = self._load_script("start_quiz.lua")
         self._add_player_script = self._load_script("add_player.lua")
         self._cancel_room_script = self._load_script("cancel_room.lua")
+        self._save_answer_script = self._load_script("save_answer.lua")
+        self._close_and_get_answers_script = self._load_script("close_and_get_answers.lua")
 
     def _load_script(self, filename: str):
         script_path = SCRIPTS_DIR / filename
@@ -74,7 +76,8 @@ class RedisClient:
             RedisKeys.room(room_id),
             mapping={
                 "current_question_index": index,
-                "question_start_timestamp": start_timestamp
+                "question_start_timestamp": start_timestamp,
+                "question_state": "OPEN"
             }
         )
 
@@ -167,28 +170,32 @@ class RedisClient:
             question_index: int,
             player_id: str,
             answer: str
-    ) -> bool:
+    ) -> SaveAnswerResult:
         answers_key = RedisKeys.answers(room_id, question_index)
         current_timestamp = await self._get_redis_timestamp()
         room_answer = RoomAnswer(answer=answer, timestamp=current_timestamp)
 
-        async with self.redis.pipeline(transaction=True) as pipe:
-            pipe.hsetnx(
-                answers_key,
-                player_id,
-                room_answer.model_dump_json()
-            )
-            pipe.expire(answers_key, 300, nx=True)
-            results = await pipe.execute()
+        result = await self._save_answer_script(
+            keys=[RedisKeys.room(room_id), answers_key],
+            args=[player_id, room_answer.model_dump_json(), str(question_index)]
+        )
 
-        return bool(results[0])
+        return SaveAnswerResult(int(result))
 
     async def get_answers(self, room_id: str, question_index: int) -> dict[str, RoomAnswer]:
-        raw =  await self.redis.hgetall(RedisKeys.answers(room_id, question_index))
+        raw_list = await self._close_and_get_answers_script(
+            keys=[
+                RedisKeys.room(room_id),
+                RedisKeys.answers(room_id, question_index)
+            ]
+        )
+
+        if not raw_list:
+            return {}
 
         return {
-            player_id: RoomAnswer.model_validate_json(data)
-            for player_id, data in raw.items()
+            raw_list[i]: RoomAnswer.model_validate_json(raw_list[i + 1])
+            for i in range(0, len(raw_list), 2)
         }
 
     async def delete_answers(self, room_id: str, question_index: int) -> None:

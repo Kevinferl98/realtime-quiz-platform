@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import IntEnum
 
 @dataclass(slots=True)
 class Player:
@@ -10,3 +11,9 @@ class LeaderboardEntry:
     player_id: str
     name: str
     score: int
+
+class SaveAnswerResult(IntEnum):
+    ROOM_NOT_FOUND = 0
+    SAVED = 1
+    QUESTION_CLOSED = 2
+    ALREADY_SUBMITTED = 3
