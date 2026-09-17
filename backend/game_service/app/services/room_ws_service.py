@@ -1,7 +1,7 @@
 import uuid
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError, TypeAdapter, BaseModel
-from app.models.multiplayer import Player
+from app.models.multiplayer import Player, SaveAnswerResult
 from app.domain.room_session import RoomSession
 from my_observability import get_logger
 from app.services.redis.redis_client import RedisClient
@@ -196,14 +196,27 @@ class RoomWebSocketService:
 
         question_index = room_meta.current_question_index
 
-        saved = await self.redis.save_answer(
+        result = await self.redis.save_answer(
             room_id,
             question_index,
             session.player_id,
             data.answer
         )
 
-        if not saved:
+        if result == SaveAnswerResult.ROOM_NOT_FOUND:
+            return
+
+        if result == SaveAnswerResult.QUESTION_CLOSED:
+            await self._send_message(
+                websocket,
+                ErrorMessage(
+                    code="QUESTION_CLOSED",
+                    message="The answers time has expired"
+                )
+            )
+            return
+
+        if result == SaveAnswerResult.ALREADY_SUBMITTED:
             await self._send_message(
                 websocket,
                 ErrorMessage(
