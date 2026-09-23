@@ -27,6 +27,10 @@ class RedisClient:
         self._save_answer_script = self._load_script("save_answer.lua")
         self._close_and_get_answers_script = self._load_script("close_and_get_answers.lua")
 
+    async def close(self) -> None:
+        """Close the Redis client and its owned connection pool."""
+        await self.redis.aclose()
+
     def _load_script(self, filename: str):
         script_path = SCRIPTS_DIR / filename
         script_content = script_path.read_text(encoding="utf-8")
@@ -269,18 +273,21 @@ class RedisClient:
 
     async def subscribe_rooms(self, handler) -> None:
         pubsub = self.redis.pubsub()
-        await pubsub.psubscribe(RedisKeys.room_channels_pattern())
+        try:
+            await pubsub.psubscribe(RedisKeys.room_channels_pattern())
 
-        async for message in pubsub.listen():
-            if message["type"] == "pmessage":
-                channel = message["channel"]
-                room_id = channel.split("_")[1]
+            async for message in pubsub.listen():
+                if message["type"] == "pmessage":
+                    channel = message["channel"]
+                    room_id = channel.split("_")[1]
 
-                try:
-                    data = json.loads(message["data"])
-                    await handler(room_id, data)
-                except Exception as e:
-                    logger.warning(f"Error processing pubsub message: {e}")
+                    try:
+                        data = json.loads(message["data"])
+                        await handler(room_id, data)
+                    except Exception as e:
+                        logger.warning(f"Error processing pubsub message: {e}")
+        finally:
+            await pubsub.aclose()
 
     async def save_ticket(self, ticket_id: str, ticket: WSTicket) -> None:
         await self.redis.setex(

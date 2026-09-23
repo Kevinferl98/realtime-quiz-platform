@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock, call
@@ -196,9 +197,18 @@ async def test_publish_room_message(redis_client):
     redis_client.redis.publish.assert_called_once()
 
 @pytest.mark.asyncio
+async def test_close(redis_client):
+    redis_client.redis.aclose = AsyncMock()
+
+    await redis_client.close()
+
+    redis_client.redis.aclose.assert_awaited_once_with()
+
+@pytest.mark.asyncio
 async def test_subscribe_rooms(redis_client):
     pubsub_mock = MagicMock()
     pubsub_mock.psubscribe = AsyncMock()
+    pubsub_mock.aclose = AsyncMock()
     async def fake_listen():
         yield {"type":"pmessage","channel":"room_123","data":'{"type":"msg"}'}
     pubsub_mock.listen = fake_listen
@@ -206,6 +216,30 @@ async def test_subscribe_rooms(redis_client):
     handler = AsyncMock()
     await redis_client.subscribe_rooms(handler)
     handler.assert_called_once_with("123", {"type":"msg"})
+    pubsub_mock.aclose.assert_awaited_once_with()
+
+@pytest.mark.asyncio
+async def test_subscribe_rooms_closes_pubsub_when_cancelled(redis_client):
+    pubsub_mock = MagicMock()
+    pubsub_mock.psubscribe = AsyncMock()
+    pubsub_mock.aclose = AsyncMock()
+    blocker = asyncio.Event()
+
+    async def fake_listen():
+        await blocker.wait()
+        yield
+
+    redis_client.redis.pubsub.return_value = pubsub_mock
+    pubsub_mock.listen = fake_listen
+
+    task = asyncio.create_task(redis_client.subscribe_rooms(AsyncMock()))
+    await asyncio.sleep(0)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    pubsub_mock.aclose.assert_awaited_once_with()
 
 @pytest.mark.asyncio
 async def test_save_answer(redis_client):

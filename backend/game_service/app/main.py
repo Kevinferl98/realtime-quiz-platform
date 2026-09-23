@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from app.api.routes import router
 from app.api.routes_ws import router_ws
 from app.core.config import config
-from app.dependencies import get_room_manager
+from app.dependencies import get_redis_client, get_room_manager
 from app.services.quiz_grpc_client import QuizServiceClient
 from contextlib import asynccontextmanager
 from my_observability import (
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
 
     # Room Manager initialization
     manager = get_room_manager()
+    redis_client = get_redis_client()
     await manager.start()
     app.state.room_manager = manager
 
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI):
     # Clean after shutdown
     await quiz_client.close()
     await manager.stop()
+    await redis_client.close()
     shutdown_telemetry()
 
 app = FastAPI(lifespan=lifespan)
